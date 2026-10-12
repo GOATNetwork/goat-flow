@@ -411,8 +411,8 @@ For the Testnet3 Card session above, a response has this shape:
 {
   "checkout_id": "cs_...",
   "checkout_type": "DIRECT",
-  "url": "https://flow-quickpay.testnet3.goat.network/checkout?cs=cs_...",
-  "expires_at": 1780000000
+  "url": "https://flow-quickpay.testnet3.goat.network/paykit/direct?cs=cs_...",
+  "expires_at": 1893456000
 }
 ```
 
@@ -554,7 +554,7 @@ The two Card creation interfaces use different options and result names:
 
 | Interface | Amount and currency options | Authentication | Checkout result fields |
 | --- | --- | --- | --- |
-| PayKit `createFiatCheckoutLink()` | Custom `amount`, or server-priced `productKey`; currency from manifest | Public trusted PayKit link | `checkout_id`, `expires_at` |
+| PayKit `createFiatCheckoutLink()` | Custom `amount`, or server-priced `productKey`; currency from manifest | None; public endpoint. The PayKit URL supplies the trusted origin and merchant ID | `checkout_id`, `expires_at` |
 | Server SDK `createCheckoutSession()` | `paymentRails: ['fiat']`, `fiatAmount`, `fiatCurrency` | Merchant HMAC | `checkoutId`, `expiresAt` |
 
 CLI commands:
