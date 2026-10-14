@@ -15,17 +15,28 @@
  * })
  *
  * // Create an order
+ * const fromAddress = '0xBuyerAddress'
  * const order = await client.createOrder({
  *   dappOrderId: 'my-order-123',
- *   chainId: 97,
+ *   chainId: 2345, // GOAT Mainnet example; use a runtime-supported chain
  *   tokenSymbol: 'USDC',
- *   tokenContract: '0x...',
- *   fromAddress: userWalletAddress,
+ *   fromAddress,
  *   amountWei: '1000000',
  * })
  *
- * // Return order to frontend for payment
- * res.json(order)
+ * // Map to goatflow-sdk's browser Order before returning it for payment.
+ * res.json({
+ *   orderId: order.orderId,
+ *   flow: order.flow,
+ *   tokenSymbol: order.tokenSymbol,
+ *   tokenContract: order.tokenContract,
+ *   fromAddress,
+ *   payToAddress: order.payToAddress,
+ *   chainId: order.fromChainId,
+ *   amountWei: order.amountWei,
+ *   expiresAt: order.expiresAt,
+ *   calldataSignRequest: order.calldataSignRequest,
+ * })
  * ```
  */
 

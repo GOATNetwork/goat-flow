@@ -51,13 +51,13 @@ export interface GoatCheckoutConfig {
   closeGraceMs?: number
 }
 
-/** A confirmed/terminal checkout outcome, surfaced as a UX signal only. */
+/** A hosted-page success outcome, surfaced as a UX signal only. */
 export interface CheckoutResult {
   /** QuickPay session id (resume/reconcile handle). */
   session_id?: string
   /** On-chain tx hash, when the checkout reported one. */
   tx_hash?: string
-  /** Terminal status, e.g. 'PAYMENT_CONFIRMED'. */
+  /** Surface-specific status, e.g. `PAYMENT_CONFIRMED` or `COMPLETED`. */
   status?: string
   /** The product_key, when this was a product checkout. */
   product_key?: string
@@ -87,7 +87,7 @@ interface BaseOpenOptions {
    * (same postMessage channel); 'redirect' navigates the current page.
    */
   display?: 'popup' | 'tab' | 'redirect'
-  /** Called once on a terminal CONFIRMED outcome. UX signal only — NOT proof of payment. */
+  /** Called once when the hosted page reports success. UX signal only — NOT proof of payment. */
   onSuccess?: (result: CheckoutResult) => void
   /** Called when the buyer abandons (closes the popup) or the checkout reports cancel. */
   onCancel?: () => void
@@ -95,12 +95,13 @@ interface BaseOpenOptions {
   onError?: (reason: CheckoutErrorReason, detail?: unknown) => void
   /**
    * Merchant's own order/cart reference. Threaded to the hosted checkout (URL param
-   * `client_reference_id`), echoed back on the `quickpay.payment.confirmed` webhook and
-   * appended to the redirect query. It is a correlation hint, NOT a price — safe in the URL.
+   * `client_reference_id`) as a correlation hint, NOT a price. Any webhook or
+   * redirect propagation is deployment-defined and is not guaranteed by this SDK.
+   * The value is visible in the URL, so it must not contain a secret.
    */
   clientReferenceId?: string
   /**
-   * Where to send the buyer after a CONFIRMED payment (Stripe-style). The hosted page
+   * Where to send the buyer after the hosted page reports success. The hosted page
    * only honors it if the merchant's redirect_allowlist permits it (open-redirect guard).
    * Not a price — safe in the URL.
    */
@@ -121,7 +122,10 @@ interface BaseOpenOptions {
 export interface OpenOptions extends BaseOpenOptions {
   /** Merchant id (required for product mode; ignored/derived for checkoutId mode). */
   merchant?: string
-  /** Server-priced product key. This legacy merchant/product route is currently stablecoin-only. */
+  /**
+   * Server-priced product key. The hosted Product page offers Crypto and/or Card
+   * according to the merchant and product configuration.
+   */
   productKey?: string
   /** Opaque server-created checkout session id (URL param `cs`); supports crypto, fiat, or both as pinned by the server. */
   checkoutId?: string
@@ -149,8 +153,9 @@ export interface OpenCustomOptions extends BaseOpenOptions {
 
 /**
  * Options for a full-page redirect to the hosted checkout (no callbacks).
- * Fulfillable only: carries `checkoutId` (cs, crypto/fiat/both) OR the legacy
- * stablecoin-only `merchant`+`productKey` — never a price. For a custom/donation
+ * Fulfillable only: carries `checkoutId` (cs, crypto/fiat/both) OR
+ * `merchant`+`productKey` (a server-priced Product), never a price. Product
+ * payment methods come from merchant/product configuration. For a custom/donation
  * stablecoin redirect use `openCustom({ display: 'redirect' })`.
  */
 export interface RedirectOptions {
@@ -163,7 +168,7 @@ export interface RedirectOptions {
   chain?: number
   /** Merchant's own order/cart reference (URL param `client_reference_id`). Not a price. */
   clientReferenceId?: string
-  /** Post-CONFIRMED redirect target (Stripe-style); allowlist-gated by the hosted page. Not a price. */
+  /** Success redirect target; allowlist-gated by the hosted page. Not a price. */
   successUrl?: string
   /** Cancel/abandon redirect target (Stripe-style); allowlist-gated by the hosted page. Not a price. */
   cancelUrl?: string
@@ -182,11 +187,11 @@ export interface OpenDelegateOptions {
   handle: string
   /** 'popup' (default) opens a small top-level window; 'tab' a full new tab; 'redirect' navigates the page. */
   display?: 'popup' | 'tab' | 'redirect'
-  /** Post-CONFIRMED redirect target (Stripe-style); allowlist-gated by the hosted page. Not a price. */
+  /** Success redirect target; allowlist-gated by the hosted page. Not a price. */
   successUrl?: string
   /** Cancel/abandon redirect target (Stripe-style); same allowlist gate. Not a price. */
   cancelUrl?: string
-  /** Called once on a terminal CONFIRMED outcome. UX signal only — NOT proof of payment. */
+  /** Called once when the hosted page reports success. UX signal only — NOT proof of payment. */
   onSuccess?: (result: CheckoutResult) => void
   /** Called when the buyer abandons (closes the popup) or the checkout reports cancel. */
   onCancel?: () => void
@@ -203,7 +208,7 @@ export interface OpenDelegateOptions {
 export interface RedirectDelegateOptions {
   /** Opaque server-created DELEGATE checkout session handle (forwarded as `cs`). Required. */
   handle: string
-  /** Post-CONFIRMED redirect target (Stripe-style); allowlist-gated by the hosted page. Not a price. */
+  /** Success redirect target; allowlist-gated by the hosted page. Not a price. */
   successUrl?: string
   /** Cancel/abandon redirect target (Stripe-style); same allowlist gate. Not a price. */
   cancelUrl?: string
