@@ -1,9 +1,9 @@
 # Developer Quick Start
 
 This guide connects an existing application to **hosted crypto checkout on
-Testnet3**, using a TypeScript backend and browser frontend. You will create a
-session for an application order, send the buyer to checkout, and read the
-payment result on your backend.
+Mainnet or Testnet3**, using a TypeScript backend and browser frontend. You will
+create a session for an application order, send the buyer to checkout, and read
+the payment result on your backend.
 
 The snippets are integration functions, not a complete web application. Your
 application supplies login, order storage, HTTP routes, and fulfillment.
@@ -12,7 +12,16 @@ For a fixed-price Product without session-creation code, use
 
 ## 1. Prepare the merchant
 
-In the [Testnet3 Merchant Portal](https://flow-merchant.testnet3.goat.network):
+Choose an environment. The SDKs and integration steps below are the same for both:
+
+| Environment | Use | Merchant Portal |
+| --- | --- | --- |
+| Mainnet | Real payments | [Mainnet Merchant Portal](https://flow-merchant.goat.network) |
+| Testnet3 | Integration testing | [Testnet3 Merchant Portal](https://flow-merchant.testnet3.goat.network) |
+
+Merchant approval, receiving configuration, PayKit activation, API credentials,
+and fee balance are specific to each environment. Complete these steps in the
+portal for your selected environment:
 
 1. Register and obtain approval for an enabled DIRECT merchant.
 2. Configure a receiving address for an available crypto chain/token. In updated
@@ -22,7 +31,9 @@ In the [Testnet3 Merchant Portal](https://flow-merchant.testnet3.goat.network):
 3. Create API credentials under **Developer → API & Checkout Settings** and save
    the secret on your backend. Older portal labels are shown in the Merchant Guide.
 
-The buyer needs the selected test token and native gas on the same chain.
+The buyer needs the selected token and native gas on the same chain. Use test
+assets for Testnet3 and fund the buyer with real assets for Mainnet. Read the
+available chains and tokens from that environment's merchant configuration.
 Portal instructions are in the [Merchant Guide](merchant-guide.md).
 
 ## 2. Install and configure
@@ -36,14 +47,32 @@ npm install goatflow-sdk-server@0.4.0
 npm install goatflow-checkout@0.2.0
 ```
 
-Set backend environment variables:
+Set backend environment variables using **one** of the following configurations.
+Supply the credentials and merchant ID from that environment.
+
+**Mainnet**
+
+```bash
+GOATX402_API_URL=https://flow-api.goat.network
+GOATX402_CHECKOUT_ORIGIN=https://flow-quickpay.goat.network
+GOATX402_API_KEY=your_mainnet_api_key
+GOATX402_API_SECRET=your_mainnet_api_secret
+GOATX402_MERCHANT_ID=your_mainnet_merchant_id
+```
+
+**Testnet3**
 
 ```bash
 GOATX402_API_URL=https://flow-api.testnet3.goat.network
+GOATX402_CHECKOUT_ORIGIN=https://flow-quickpay.testnet3.goat.network
 GOATX402_API_KEY=your_testnet_api_key
 GOATX402_API_SECRET=your_testnet_api_secret
 GOATX402_MERCHANT_ID=your_testnet_merchant_id
 ```
+
+`GOATX402_CHECKOUT_ORIGIN` is an application setting used by the backend status
+read in step 5. The browser uses the origin of the session URL returned by your
+backend in step 3.
 
 Keep the API secret out of frontend environment variables and browser bundles.
 Use credentials, products, and checkout origins from the same environment;
@@ -81,7 +110,7 @@ Connect this function to your own authenticated route, for example
    Serialize creation for that intent so double-clicks cannot create two payments.
 3. For a new intent with no previous creation attempt, call the function once.
    Persist `checkoutId`, `url`, `expiresAt`, environment, and expected price
-   against the order **before** returning `{ checkoutId }` to the browser.
+   against the order **before** returning `{ checkoutId, url }` to the browser.
    On repeat requests, check the saved attempt: resume an eligible session or
    return the known payment state. Reconcile expired, failed, or unresolved
    attempts before authorizing any replacement; do not automatically create one.
@@ -99,20 +128,18 @@ configure [Checkout return URLs](merchant-guide.md#checkout-return-urls).
 ```ts
 import { GoatCheckout } from 'goatflow-checkout'
 
-const checkout = GoatCheckout({
-  origin: 'https://flow-quickpay.testnet3.goat.network',
-})
-
 export async function startPayment(businessOrderId: string) {
   const response = await fetch(
     `/api/orders/${encodeURIComponent(businessOrderId)}/checkout`,
     { method: 'POST', credentials: 'same-origin' },
   )
   if (!response.ok) throw new Error('Could not start checkout')
-  const { checkoutId } = await response.json()
-  if (typeof checkoutId !== 'string' || !checkoutId) {
-    throw new Error('Missing checkout ID')
+  const { checkoutId, url } = await response.json()
+  if (typeof checkoutId !== 'string' || !checkoutId ||
+      typeof url !== 'string' || !url) {
+    throw new Error('Missing checkout session details')
   }
+  const checkout = GoatCheckout({ origin: new URL(url).origin })
   checkout.redirectToCheckout({ checkoutId })
 }
 ```
@@ -128,15 +155,20 @@ works after the asynchronous session request. If using a popup instead,
 
 ## 5. Read the payment result on the backend
 
-Use the checkout ID saved in step 3, not an ID supplied by the browser. The
-session's status endpoint supplies the linked `order_id` after crypto binding.
-Then read that order through the authenticated server SDK:
+Load the checkout ID and environment saved in step 3. Use the matching backend
+configuration for that environment and the saved ID, not an ID supplied by the
+browser. The session's status endpoint supplies the linked `order_id` after
+crypto binding. Then read that order through the authenticated server SDK:
 
 ```ts
 // Same backend module as step 3. This example is for the crypto rail only.
 export async function readCryptoPayment(checkoutId: string) {
+  const statusUrl = new URL(
+    `/checkout/v1/sessions/${encodeURIComponent(checkoutId)}/status`,
+    process.env.GOATX402_CHECKOUT_ORIGIN!,
+  )
   const response = await fetch(
-    `https://flow-quickpay.testnet3.goat.network/checkout/v1/sessions/${encodeURIComponent(checkoutId)}/status`,
+    statusUrl,
     { signal: AbortSignal.timeout(15_000), redirect: 'error', cache: 'no-store' },
   )
   if (!response.ok) throw new Error(`Checkout status failed: ${response.status}`)
@@ -176,11 +208,15 @@ deployment-confirmed [verification contract](merchant-guide.md#9-webhook-configu
 
 ## 6. Verify the complete path
 
-- Complete one test payment and find the same order in the Merchant Portal.
+- Complete a payment in your selected environment and find the same order in
+  that environment's Merchant Portal. Mainnet payments use real funds.
 - Confirm your backend matches the payment terms and fulfills once.
 - Refresh/retry the status read and replay a notification: fulfillment stays once.
-- Test cancellation, expiry, and a lost API response without requesting a second payment.
-- Before production, complete the [launch checks](merchant-guide.md#launch-checks).
+- Use Testnet3 to test cancellation, expiry, and a lost API response without
+  requesting a second payment.
+- Before accepting Mainnet payments, complete the
+  [launch checks](merchant-guide.md#launch-checks) with Mainnet merchant setup,
+  credentials, receiving configuration, and fee balance.
 
 For Card, use the [Card session example](goat-flow-api-reference.md#9-hosted-checkout-sessions)
 and the deployment's trusted Card confirmation contract; the crypto proof flow
