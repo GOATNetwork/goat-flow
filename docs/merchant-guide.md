@@ -1,126 +1,58 @@
-# GOAT Flow Merchant Guide
+# Merchant Guide
 
-Use this guide to register a merchant, configure Crypto and eligible Card
-payment methods and developer access, manage orders and team members, and
-publish QuickPay products or paid API routes.
+Use this guide for Merchant Portal setup and operations. Developers should
+start with the [Developer Quick Start](goat-flow-developer-quickstart.md).
+Screenshots include Mainnet and Testnet3 examples from earlier portal versions.
+Navigation names below follow the portal source reviewed on November 26, 2026;
+confirm which version your deployment runs. Use the [environment table](goat-flow-api-reference.md#1-origins-and-configuration)
+to open the correct portal, and keep test and production configuration separate.
 
----
+## First-time setup
 
-## Table of Contents
+| Step | Action | Complete when |
+| --- | --- | --- |
+| 1 | [Register and sign in](#3-register-a-merchant-account) | Merchant approved and enabled |
+| 2 | [Configure receiving addresses](#6-configure-receiving-addresses), or confirm Card eligibility with the operator | The intended payment method is available |
+| 3 | [Configure QuickPay / Products](#12-quickpay-and-products) and [API keys](#8-api-keys-management) where needed | Your link or backend can create the intended checkout |
+| 4 | Complete the chosen [application integration](goat-flow-developer-quickstart.md) | A test buyer can pay and the backend confirms it |
+| 5 | Complete [launch checks](#launch-checks) | Fulfillment, reconciliation, and operational ownership are verified |
 
-1. [Overview](#1-overview)
-2. [Payment Mode and Available Assets](#2-payment-mode-and-available-assets)
-3. [Register a Merchant Account](#3-register-a-merchant-account)
-4. [Approval, Login, and Account Security](#4-approval-login-and-account-security)
-5. [Dashboard Overview](#5-dashboard-overview)
-6. [Configure Receiving Addresses](#6-configure-receiving-addresses)
-7. [Merchant Settings](#7-merchant-settings)
-8. [API Keys Management](#8-api-keys-management)
-9. [Webhook Configuration](#9-webhook-configuration)
-10. [Team Management and Invite Codes](#10-team-management-and-invite-codes)
-11. [Order Management](#11-order-management)
-12. [QuickPay and Products](#12-quickpay-and-products)
-13. [Balance, Fees, and Top-up](#13-balance-fees-and-top-up)
-14. [Audit Logs](#14-audit-logs)
-
----
+For daily operations: [orders](#11-order-management) ·
+[fees and top-up](#13-balance-fees-and-top-up) ·
+[team](#10-team-management-and-invite-codes) · [security](#4-approval-login-and-account-security) ·
+[webhooks](#9-webhook-configuration) · [audit logs](#14-audit-logs).
 
 ## 1. Overview
 
-The GOAT Flow Merchant Portal is your management dashboard for registering your
-merchant identity, configuring payment methods, managing the team, keys, and
-webhooks, viewing orders and balances, and publishing QuickPay and agent (MPP)
-commerce surfaces.
-
-### Portal navigation
-
-The portal sidebar is grouped as:
-
-| Group | Pages |
+| Portal group | Pages |
 | --- | --- |
-| **Overview** | Dashboard |
-| **Payments** | Orders · Order Reconciliation |
-| **Payment Setup** | Receiving Tokens & Addresses · Hosted Checkout (QuickPay) · QuickPay Products · Paid API Routes (MPP) |
-| **Billing** | Fee Balance · Fee Top-up |
-| **Developer** | Programmatic API & Webhooks |
-| **Account & Security** | Profile · Team · Security · Audit Logs |
+| Overview | Dashboard |
+| Payments | All Orders · Refund Requests · Disputes · Reconciliation |
+| Payment Setup | Payment Guide · Crypto Payments · Card Payments (Stripe) · PayKit Settings |
+| QuickPay | Accept Any Amount · Sell Products |
+| Developer | API & Checkout Settings · MPP Routes |
+| GOAT Flow Fees | Fee Balance · Top Up Fee Balance |
+| Account & Security | Profile · Team · Security · Audit Logs |
 
-Use the service origins for the target environment:
-
-- Merchant Portal: `https://flow-merchant.goat.network` (Testnet3:
-  `https://flow-merchant.testnet3.goat.network`)
-- Admin Portal (authorized operators only): `https://flow-admin.goat.network`
-  (Testnet3: `https://flow-admin.testnet3.goat.network`)
-- Flow API / standalone MPP Core: `https://flow-api.goat.network` (Testnet3:
-  `https://flow-api.testnet3.goat.network`)
-- QuickPay / Checkout and same-origin public API: `https://flow-quickpay.goat.network` (Testnet3:
-  `https://flow-quickpay.testnet3.goat.network`)
-
-The QuickPay client derives public session and MPP paths from the
-trusted QuickPay link origin. Use `flow-api` for authenticated merchant APIs
-and for standalone MPP only when that Core origin is explicitly configured.
-
-### Before you begin
-
-- Keep Mainnet and Testnet3 merchant IDs, credentials, wallets, webhook secrets,
-  receiving addresses, and configuration separate.
-- Use the active portal, manifest, challenge, or API response as the source of
-  current configuration.
-- Never share API secrets, webhook secrets, private keys, TOTP setup data,
-  recovery codes, active invite codes, or unredacted personal and wallet data.
-
----
+The table shows DIRECT merchant navigation; owner-only pages are hidden from
+members. Older screenshots use **Receiving Tokens & Addresses** for Crypto
+Payments, **Hosted Checkout (QuickPay)** for the public-link setup, **QuickPay
+Products** for Sell Products, and **Paid API Routes (MPP)** for MPP Routes.
 
 ## 2. Payment Mode and Available Assets
 
-GOAT Flow Hosted Checkout can offer Crypto and Card when enabled for the target
-deployment and merchant or product. `checkoutType: 'DIRECT'` and
-`paymentRails` are separate dimensions, so a Card session can use the current
-public `DIRECT` checkout subsystem.
+For crypto DIRECT payments, the buyer sends ERC-20 tokens to your configured
+receiving address on the selected chain. Configure a receiving address for
+each accepted chain/token pair. The buyer needs the token plus native gas.
 
-For Crypto, the buyer and server SDKs implement DIRECT transfer workflows in
-which the payer sends ERC-20 tokens to the receiving address returned for the
-order. The current GOAT Flow MPP profile also uses a direct-transfer and
-receipt-verification flow; MPP itself is not limited to this payment method.
+Card payers complete the hosted provider flow without a crypto wallet.
+Merchant fiat eligibility, currency, connected Stripe account, and provider
+test/live mode must be confirmed in the target deployment. Crypto receiving
+setup does not enable Card payments.
 
-- Fund flow: User wallet -> Merchant wallet
-- Mechanism: ERC-20 `transfer`
-- Best for: Tips, donations, simple checkout, QuickPay links, and agent (MPP) purchases
-- Requirements: A receiving address for each supported chain/token pair
-- Records: Confirmed orders can expose a server-issued payment record for
-  operations and reconciliation
-
-For Card, the payer completes the provider flow on the hosted page and does not
-need a crypto wallet, token balance, or native gas. Merchant fiat eligibility,
-supported currencies, connected Stripe status, Stripe test/live mode, and
-product rail settings are deployment-specific. Creating a Card link or
-receiving a browser success signal is not payment confirmation.
-
-**Example:** A content service configures a GOAT Mainnet USDC receiving address.
-A buyer sends USDC to that same-chain merchant address, and GOAT Flow observes
-and matches the transfer to the order.
-
-The Crypto receiving-address sections below apply only to the Crypto rail.
-
-### Find available chains and tokens
-
-Do not treat a static chain matrix as current availability.
-Supported chains, tokens, decimals, contracts, minimums, maximums, and available
-transfer and receipt capabilities are deployment- and merchant-specific.
-
-Use these runtime sources:
-
-- **Portal:** Receiving Tokens & Addresses, QuickPay accepted tokens, and MPP route
-  selectors.
-- **Public integration:** the x402 challenge, QuickPay `manifest.json`, or public
-  merchant lookup.
-- **Authenticated integration:** order and checkout responses returned by the
-  active API deployment.
-
-Testnet3 configuration does not imply that the same chains, token contracts,
-limits, fees, or merchant capabilities are enabled on Mainnet.
-
----
+Read available tokens, contracts, decimals, amount limits, and fees from the
+active portal/API configuration. Testnet3 settings do not establish Mainnet
+availability. A browser success signal does not itself confirm payment.
 
 ## 3. Register a Merchant Account
 
@@ -138,14 +70,28 @@ The registration form includes:
 
 | Field | Description | Format Requirements |
 | --- | --- | --- |
-| **Merchant ID** | Unique merchant identifier; cannot be changed after registration | Letters, numbers, hyphens, and underscores only. Reserved IDs and `topup-` / `topup_` prefixes are not available. |
-| **Business name** | Display name; can be changed later | Any merchant display text |
-| **Work email** | Owner login email | Valid email address |
-| **Password** | Owner login password | 8 to 72 characters. Set up 2FA after signing in. |
+| **Merchant ID** | Unique merchant identifier; cannot be changed after registration | At most 64 ASCII letters, digits, hyphens, or underscores. Reserved IDs and `topup-` / `topup_` prefixes are not available. |
+| **Business name** | Display name; can be changed later subject to name validation and availability | After normalization: at least 2 visible characters (grapheme clusters), at most 128 Unicode code points, and no control or invisible Unicode characters. |
+| **Work email** | Owner login email | Valid email address, at most 256 Unicode code points |
+| **Password** | Owner login password | 8 to 72 UTF-8 bytes; a non-ASCII character can use several bytes. Set up 2FA after signing in. |
+
+Business names are normalized for Unicode and whitespace and checked for
+uniqueness across merchants using a case-folded comparison. For self-service
+registration, names held by pending or approved applications remain reserved
+while held in those states; rejected names remain reserved for 30 days after
+rejection. A conflicting name returns HTTP `409`.
+
+Self-service registration supports **DIRECT only**. The API defaults an omitted
+`receive_type` to `DIRECT` and rejects other modes.
 
 ### 3.3 Submit Application
 
 Click **Submit application** when done.
+
+The registration endpoint (`POST /merchant/v1/auth/register`) defaults to
+**5 requests per IP per hour**; IPv6 addresses in the same `/64` share a limit.
+Exceeding the limit returns HTTP `429`. The limit is deployment-configurable;
+wait before retrying instead of repeatedly submitting the form.
 
 After submission, the portal displays:
 
@@ -194,7 +140,7 @@ and select **Change password**. The form requires:
 - new password
 - confirmation of the new password
 
-The new password must be 8 to 72 characters and must differ from the current
+The new password must be 8 to 72 UTF-8 bytes and must differ from the current
 password.
 
 ![Change Password](./images/44-change-password.png)
@@ -231,60 +177,22 @@ Do not rely on a fixed session-expiry or invalidation delay.
 
 ## 5. Dashboard Overview
 
-After login, the owner lands on the Dashboard page.
+After login, the owner lands on the Dashboard, which shows order counts,
+revenue summaries, and recent orders.
 
 ![New Merchant Dashboard](./images/49-new-merchant-dashboard.png)
 
-### 5.1 Setup progress
-
-Until the required DIRECT setup is complete, the Testnet3 Dashboard shows a
-setup card with four checks:
-
-- Account enabled
-- DIRECT mode confirmed
-- Receiving address configured
-- API keys reviewed as an optional step
-
-Select **Resume setup** to open **Payment Setup → Onboarding**.
+For incomplete DIRECT setup, select **Resume setup** to open
+**Payment Setup → Payment Guide** (`/acceptance/onboarding`). Confirm DIRECT mode, add receiving rows,
+review optional API keys, and review the optional self-test. API keys are
+required when your backend creates orders/sessions, but not for a public
+Product link. The self-test is guidance, not an approval gate.
 
 ![Post-Approval Onboarding](./images/50-portal-onboarding.png)
 
-The current DIRECT onboarding flow has four steps:
-
-1. Confirm the read-only receive mode.
-2. Add one or more receiving rows.
-3. Optionally create API keys for programmatic DIRECT transfer workflows.
-4. Review the optional self-test.
-
-![Onboarding Receiving Selection](./images/51-onboarding-receiving.png)
-
-The self-test is guidance, not an approval gate. A merchant can return to the
-Dashboard without broadcasting a payment.
-
-![Optional Self-Test](./images/52-onboarding-self-test.png)
-
-### 5.2 Dashboard statistics
-
-**Dashboard Stats** show revenue and order totals as cards:
-
-| Card | Description |
-| --- | --- |
-| **Total Revenue** | Cumulative order revenue and order count |
-| **Today** | Today's order count and volume |
-| **This Week** | This week's order count and volume |
-| **This Month** | This month's order count and volume |
-
-**Order Statistics** counts every order by state: Total, Checkout verified, Payment
-confirmed, Invoiced, Failed, Expired, Canceled. A **Recent orders** table lists the
-latest orders (Order ID, Dapp Order, Flow, Chain, Token, Amount, Status, Created).
-
-New merchants show zero counts until orders are created and paid.
-
----
-
 ## 6. Configure Receiving Addresses
 
-Open **Payment Setup → Receiving Tokens & Addresses** in the sidebar.
+Open **Payment Setup → Crypto Payments** (`/acceptance/receiving`).
 
 In DIRECT, the buyer wallet sends tokens to the merchant
 wallet address returned for the order on the selected EVM chain.
@@ -362,140 +270,89 @@ shown for reference (for example `max_frozen_amount_usd`,
 
 ## 8. API Keys Management
 
-API keys and webhooks share **Developer → Programmatic API & Webhooks**. API keys
-are **optional** and are only needed for programmatic DIRECT transfer workflows.
-Hosted QuickPay works without API keys.
+Open **Developer → API & Checkout Settings** (`/developer`). The page heading
+is **API Keys, Webhooks & Checkout**; older versions may show
+**Programmatic API & Webhooks**.
 
-New Testnet3 merchants show `API key (not set)` / `API secret (not set)` until an owner
-creates keys. The existing API secret is never returned after creation.
+Your backend needs API credentials to create orders or Checkout Sessions,
+including Card-only sessions. Public Product links and public PayKit Card-link
+creation do not need merchant API credentials in the buyer page.
 
-### Create or rotate API keys
+An owner selects **Create API Keys** initially or **Rotate API Keys** to replace
+existing credentials. Save the
+secret immediately in your backend secret store: it is displayed once and
+cannot be retrieved later. After suspected exposure, rotate the credentials
+and confirm the old ones no longer work.
 
-After selecting **Rotate API Keys**, GOAT Flow generates a new API Key and API
-Secret. The secret is shown only once; save it immediately.
+Give developers the [backend setup instructions](goat-flow-developer-quickstart.md#2-install-and-configure).
+Keep secrets out of browser code, screenshots, tickets, and repositories.
 
-| Field | Description |
-| --- | --- |
-| **API Key** | Public key for identifying your merchant |
-| **API Secret** | Private HMAC key; shown only once when generated |
-| **Last Updated** | Last rotation timestamp |
+### Checkout return URLs
 
-After the one-time display closes, the Developer page still shows the API Key but
-only reports that the Secret is configured. Do not include either credential in
-screenshots, tickets, or public documentation.
+When the target Core and portal support Checkout settings, an owner can:
 
-Use API keys only from your backend:
+1. Open **Developer → API & Checkout Settings**, then **Checkout redirects**
+   at `/developer#checkout-redirects`.
+2. Add one allowed HTTPS origin or path prefix per line, such as
+   `https://shop.example.com/checkout`, then save and reload.
+3. Supply matching `successUrl` / `cancelUrl` values when creating sessions,
+   such as `https://shop.example.com/checkout/success`.
 
-```bash
-GOATX402_API_URL=https://flow-api.goat.network
-GOATX402_API_KEY=your_API_Key
-GOATX402_API_SECRET=your_API_Secret
-```
-
-The TypeScript and Go server SDKs sign authenticated `/api/v1/*` requests with:
-
-| Header | Required |
-| --- | --- |
-| `X-API-Key` | Yes |
-| `X-Timestamp` | Yes |
-| `X-Nonce` | Yes |
-| `X-Sign` | Yes |
-
-Do not expose the API Secret in frontend code or public repositories. If you
-suspect a key leak, rotate it immediately and confirm the previous credentials
-no longer work.
-
----
+An empty allowlist rejects new sessions containing return URLs. Omitting both
+URLs avoids redirect validation. The setting does not enable QuickPay or Card
+payments. If the section is absent, confirm deployment support with the operator.
+Exact matching, limits, and existing-session behavior are in the
+[API Reference](goat-flow-api-reference.md#checkout-redirect-settings).
 
 ## 9. Webhook Configuration
 
-Webhooks are configured on the same **Programmatic API & Webhooks** page, below
-API keys. The current portal allows up to **3 webhooks**.
-
-### 9.1 Add a Webhook
-
-On the Developer page, click **Add webhook**.
+On **API & Checkout Settings**, select **Add webhook**. The portal accepts up to three HTTPS
+destinations per merchant; localhost is not allowed. Select events offered by
+your deployment, then save the one-time webhook secret in your backend.
 
 ![Add Webhook](./images/40-add-webhook-current.png)
 
-| Field | Description |
-| --- | --- |
-| **URL** | Your callback URL. Must be HTTPS. Example: `https://your-app.com/api/x402/callback` |
-| **Events** | Events exposed by the active deployment |
+The portal options and Core subscription allowlist reviewed on November 26,
+2026 contain these nine events:
 
-The form enforces:
+- `order.invoiced`
+- `quickpay.payment.confirmed`
+- `quickpay.checkout.completed`
+- `fiat.payment.succeeded`
+- `fiat.payment.refunded`
+- `fiat.refund_request.updated`
+- `fiat.dispute.action_required`
+- `fiat.dispute.updated`
+- `fiat.dispute.closed`
 
-- URL must be HTTPS.
-- `localhost` URLs are not allowed.
-- Maximum 3 webhooks per merchant.
+Event availability and payloads can differ by deployment; the installed public
+SDK does not define the deployment's webhook contract.
 
-The Testnet3 portal currently shows
-`order.invoiced`, `quickpay.payment.confirmed`, and
-`quickpay.checkout.completed`. Available events can vary by environment and are
-not defined by the public SDK packages.
+The public repository does not provide a deployment-approved production
+webhook schema or delivery fixture. Before implementing a receiver, obtain a
+redacted real delivery and confirm the event schema, signature input/headers,
+timestamp/replay rules, and retry behavior with the deployment owner. Preserve
+raw request bytes if the confirmed signing contract requires them.
 
-Payment confirmation is surface-specific:
+### Verify before fulfillment
 
-- Creating an order/session, receiving a success redirect or popup message, or
-  obtaining a transaction hash does not by itself authorize fulfillment.
-- Ordinary orders, PayKit sessions, and Hosted Checkout use different status
-  models. Do not interchange `PAYMENT_CONFIRMED`, `INVOICED`, and `COMPLETED`.
-- A Card confirmation is not required to contain an on-chain `tx_hash`.
-- Fulfill from the authenticated event/status contract for the exact surface,
-  and make the business transition idempotent.
+1. Authenticate the notification and apply its replay rules before trusting fields.
+2. Resolve its verified order/session identity to your saved business order.
+   A public `client_reference_id` alone does not establish ownership.
+3. Check the successful state and expected payment terms: chain, token, recipient,
+   and amount for Crypto; currency, amount, and provider mode for Card.
+   A Card confirmation need not have a transaction hash or crypto proof.
+4. Durably enqueue valid events and acknowledge promptly. Make the final
+   fulfillment update atomic and idempotent so duplicate delivery cannot ship twice.
+5. Test real delivery, delay, receiver failure, retry, and reconciliation in the
+   intended environment. A browser callback must not bypass server verification.
 
-Keep identifiers distinct when storing and reconciling notifications:
-
-| Identifier | Meaning |
-| --- | --- |
-| `order_id` | GOAT Flow order identifier returned by order/session binding |
-| `checkout_id` | Opaque Hosted Checkout handle returned to the merchant; treat it as a bearer capability |
-| `checkout_session_id` | Internal Checkout row identifier that may appear in deployment-specific events; not the opaque `checkout_id` |
-| `session_id` / `quickpay_session_id` | PayKit payment-session identifier; use the field documented for that event |
-| `client_reference_id` | Merchant business correlation value; not a GOAT Flow order/session ID |
-
-> **Before relying on a webhook:** confirm the event is emitted in the target
-> environment and verify its payload schema, signature input and headers,
-> timestamp and replay rules, retry schedule, and delivery source.
-
-As of October 9, 2026, this public repository does not contain a
-deployment-approved production notification sample or a versioned webhook
-contract. An implementation snapshot is not proof of what production sends, so
-this guide intentionally does not publish exact signature code, a fabricated
-`event_id`, or assumed timestamp/retry rules. Obtain a redacted real delivery
-and deployment-owner confirmation before enabling webhook-driven fulfillment,
-then record the environment and verification date in the application's
-runbook.
-
-Before enabling fulfillment:
-
-1. Deploy a publicly reachable HTTPS endpoint with a valid certificate.
-   `localhost`, private-only addresses, browser cookies, and interactive login
-   are not valid delivery dependencies.
-2. Preserve the raw request bytes until signature verification is complete if the
-   deployment signs the raw body.
-3. Authenticate the request according to the active webhook specification,
-   durably enqueue it, return a success response promptly, and process it
-   idempotently.
-4. Test a real Testnet3 event through the deployed receiver, including duplicate
-   delivery and retry handling.
-5. Repeat the delivery test on Mainnet before enabling production fulfillment.
-
-Do not use a delivery-time `created_at` value as a stable deduplication key
-unless the active contract explicitly guarantees that behavior. Do not assume
-an `event_id` exists. Base deduplication on the deployment-confirmed event and
-business-entity identifiers, and make the final fulfillment update atomic so a
-redelivery cannot grant value twice.
-
-### 9.2 Save the Webhook Secret
-
-After creation, the portal displays the **Webhook Secret** once.
-
-The Webhook Secret is shown only once. Save it immediately and use it to verify
-incoming webhook requests according to the active signing contract. Never share
-or expose the one-time secret.
-
----
+Identifiers are not interchangeable: `checkout_id` is the opaque bearer handle;
+`checkout_session_id` can be an internal row ID; `order_id` is an order;
+`session_id` / `quickpay_session_id` identify a PayKit session. Use the field
+defined by the confirmed event contract. Do not assume `event_id` exists or that
+a delivery timestamp is a stable deduplication key. Retain the confirmed
+contract and sanitized fixture with your application's tests.
 
 ## 10. Team Management and Invite Codes
 
@@ -550,7 +407,7 @@ Fill in:
 
 - **Invite code** - The single-use code provided by the workspace owner (starts with `inv_`)
 - **Email** - The invitee's email
-- **Password** - A password following the 8 to 72 character rule
+- **Password** - A password following the 8 to 72 UTF-8 byte rule
 
 The invitee joins as a member. Invite-code registration does not require new merchant approval because the merchant is already approved.
 
@@ -568,7 +425,7 @@ The Team table marks a redeemed code as **Used** and records the member email.
 
 ## 11. Order Management
 
-Open **Orders** to view all orders.
+Open **Payments → All Orders** (`/payments/orders`) to view orders.
 
 ![Orders List](./images/64-new-merchant-orders.png)
 
@@ -611,37 +468,19 @@ transfer and invoice.
 
 ### 11.1 Order status and fulfillment
 
-Current SDK order status values include:
+For crypto orders, `PAYMENT_CONFIRMED` and `INVOICED` are successful states;
+the portal may show `INVOICED` without an intermediate state being visible.
+`FAILED`, `EXPIRED`, and `CANCELLED` do not authorize fulfillment.
 
-- `CHECKOUT_VERIFIED`
-- `PAYMENT_CONFIRMED`
-- `INVOICED`
-- `FAILED`
-- `EXPIRED`
-- `CANCELLED`
-
-The TypeScript `waitForConfirmation()` and Go `WaitForConfirmation` helpers
-return on successful `PAYMENT_CONFIRMED` or `INVOICED`, and on `FAILED`,
-`EXPIRED`, or `CANCELLED`. Core can advance a DIRECT order from
-`PAYMENT_CONFIRMED` to `INVOICED` in one watcher transaction, so a poller may
-observe only `INVOICED`.
-
-A terminal status is only one fulfillment input. Read it through an
-authenticated backend call or verified webhook, then verify the merchant and
-order identifiers, expected chain, token, amount, receiving address, and
-transaction identity. Make fulfillment idempotent so a webhook retry or
-repeated status poll cannot ship twice.
-
-`getOrderProof()` / `GetOrderProof()` returns a server-issued payment record.
-Its historical `signature` field is an unsigned Keccak256 digest of
-`order_id`, `tx_hash`, `log_index`, `from_addr`, `to_addr`, `amount_wei`, and
-`from_chain_id`, concatenated without separators in that order. It does not
-cover `status`; verify the transaction hash on-chain when independent proof is
-required.
+Your integration must verify the trusted result and expected business terms
+before fulfilling once. Use the [backend confirmation flow](goat-flow-developer-quickstart.md#5-read-the-payment-result-on-the-backend)
+or the [verified webhook contract](#9-webhook-configuration).
+Order and checkout/session status names are different; developers can find
+the exact [order fields](goat-flow-api-reference.md#5-read-order-status) in the API Reference.
 
 ### 11.2 Order Reconciliation
 
-**Payments → Order Reconciliation** provides
+**Payments → Reconciliation** (`/payments/reconciliation`) provides
 accounting-oriented reports. Filter by
 **Chain** and a **From/To** date range, then **Apply**. Summary cards show Total
 Orders, Matched Payments (confirmed), Unpaid Orders (waiting or expired before
@@ -661,306 +500,88 @@ their presence does not imply that GOAT Flow holds or later disburses buyer fund
 
 ## 12. QuickPay and Products
 
-QuickPay is the public hosted checkout and agent-commerce surface for human
-buyers and AI agents.
-
-The portal requires:
-
-- Merchant is enabled
-- QuickPay is enabled
-- At least one eligible receiving token is configured
-- The active deployment exposes the required fee and limit configuration
+Use **Payment Setup → PayKit Settings** (`/acceptance/paykit-settings`) to
+activate or pause PayKit. Use **QuickPay → Accept Any Amount**
+(`/acceptance/paykit`) for a custom-amount public merchant link.
+Crypto checkout requires an enabled DIRECT merchant, QuickPay enabled,
+eligible receiving tokens, and the deployment's fee/limit configuration.
+For Card, confirm fiat eligibility and provider configuration separately.
 
 ### 12.1 Configure QuickPay
 
-QuickPay must be enabled for the merchant. After approval, inspect **Profile**
-or **Hosted Checkout (QuickPay)**:
+1. Sign in as owner. In **PayKit Settings**, complete the displayed setup
+   requirements, activate PayKit, and confirm its status is **Active**.
+2. Verify each accepted chain/token, contract, decimals, receiving address, and limit.
+3. For a custom-amount link, open **Accept Any Amount**. Set its display name,
+   description, optional HTTPS logo, payment methods, and memo requirement.
+4. Set the available usage limits for unpaid sessions, daily sessions, and
+   maximum checkout amount.
+5. Save, reload, confirm the link is **Live**, and open the copied public page while signed out.
+   Verify the environment and displayed terms.
 
-- If the account state is **Live**, configure it directly.
-- If it is unavailable, contact
-  [Support@goat.network](mailto:Support@goat.network).
+![Hosted Checkout Configuration](./images/55-new-merchant-quickpay.png)
 
-Manage the live configuration under **Payment Setup → Hosted Checkout
-(QuickPay)**:
-
-![Hosted Checkout (QuickPay) Configuration](./images/55-new-merchant-quickpay.png)
-
-Configure and verify QuickPay in this order:
-
-1. Confirm **Account state** is live, the merchant is enabled and in `DIRECT`
-   mode, and the current user is the owner.
-2. Confirm every token you intend to expose has a receiving-address row. Compare
-   the displayed chain ID, token contract, decimals, and min/max amount with the
-   active environment record.
-3. In **Hosted link configuration**, set the buyer-facing Display name,
-   Description, and optional HTTPS Logo URL.
-4. Decide whether to enable hosted custom-amount checkout. If it is enabled,
-   decide whether a payer memo is required.
-5. Set limits for unpaid checkouts per payer, daily sessions, merchant-wide open
-   sessions, and maximum checkout amount. Start conservatively on Mainnet.
-6. Save the configuration and reload the page. Confirm the values persisted and
-   **Account state** remains live.
-7. Copy and open the **Payment page**, **`agent.md`**, and **`manifest.json`**
-   links in a signed-out browser. They must resolve on the expected environment
-   origin and must not expose merchant API credentials.
-8. Check **Accepted EVM tokens for QuickPay**. Do not launch if a contract,
-   decimals value, receiving address, or limit differs from the approved
-   Mainnet configuration.
-
-QuickPay links are served from a dedicated origin (for example,
-`flow-quickpay.goat.network`; Testnet3:
-`flow-quickpay.testnet3.goat.network`). Copy the links from the portal instead of
-constructing them by hostname substitution.
-
-The merchant API also exposes these owner-only configuration operations. They
-are service endpoints rather than SDK convenience methods:
-
-| Action | API path | Notes |
-| --- | --- | --- |
-| Read config | `GET /merchant/v1/quickpay` | Shows eligibility, display config, caps, token list, and public links |
-| Update config | `PUT /merchant/v1/quickpay` | Owner-only |
-
-Config fields include `quickpay_enabled`, `display_name`, `description`, `logo_url`, `memo_required`, `max_amount_wei`, `max_open_sessions`, `daily_session_limit`, and `max_open_sessions_merchant_wide`.
+Copy the payment page, `agent.md`, and `manifest.json` links from the portal.
+Do not change hostnames to move a link between environments. If QuickPay is
+unavailable, contact [Support@goat.network](mailto:Support@goat.network).
 
 ### 12.2 QuickPay Products
 
-QuickPay Products are predefined fixed-price items. A product carries a decimal
-`price` and can be listed under the Crypto rail, Card rail, or both according to
-merchant and product configuration. For Crypto, the buyer or agent chooses an
-eligible chain and token, and the client independently converts the price using
-the selected token decimals and refuses to broadcast if the session amount does
-not match. For Card, the server pins the quote in the fiat rail's configured
-currency and the payer completes the hosted provider flow.
+Products set a merchant-controlled decimal price. They can offer Crypto, Card,
+or both when the merchant and product configuration support those rails.
+Open **QuickPay → Sell Products** (`/acceptance/products`).
 
 ![QuickPay Products](./images/57-new-merchant-product.png)
 
-The merchant API exposes these product operations:
-
-| Action | Merchant API path |
-| --- | --- |
-| List products | `GET /merchant/v1/quickpay/products` |
-| Create product | `POST /merchant/v1/quickpay/products` |
-| Update product | `PUT /merchant/v1/quickpay/products/:product_key` |
-| Delete product | `DELETE /merchant/v1/quickpay/products/:product_key` |
-
-The QuickPay public type and manifest validator cover these published product
-fields:
-
-| Field | Notes |
-| --- | --- |
-| `product_key` | Identifier; must match `^[A-Za-z0-9._:~-]{1,64}$` |
-| `name` | Required display name |
-| `description` | Optional |
-| `image_url` | Optional HTTPS URL |
-| `price` | Required positive decimal, token-agnostic |
-
-The portal also exposes `enabled` and `sort_order`,
-and treats the product key as the update/delete path identifier. Those fields,
-defaults, and immutability rules are not exported or validated by the current
-QuickPay client, and the public manifest does not currently publish them.
-
-Crypto Product sessions use `product_key` plus the buyer-selected `chain_id`
-and `token_contract`. The server response pins the authoritative amount and memo
-(`product:<product_key>`), and the client verifies the amount before broadcast.
-Card Product link creation instead checks that the Product is advertised under
-`rails.fiat`; the hosted flow remains server-authoritative for the Card quote.
-
-The public payment page presents live products and allows custom amount checkout
-when that mode is enabled.
+1. Choose a stable product key (`A-Z`, `a-z`, digits, `.`, `_`, `:`, `~`, `-`;
+   1–64 characters). Treat it as an integration identifier.
+2. Enter the name, optional description/HTTPS image, positive decimal price,
+   enabled state, and sort order.
+3. Save and confirm the product is **Enabled** and **Live**.
+4. Open the public page and verify its price and rail-specific terms. Test one
+   checkout and reconcile its result before enabling fulfillment.
 
 ![Public QuickPay Checkout](./images/58-new-merchant-public-checkout.png)
 
-For each product:
-
-1. Choose a stable `product_key`; treat it as an integration identifier, not a
-   display label.
-2. Enter the buyer-facing name, optional description/image, decimal price,
-   enabled state, and sort order.
-3. Save it, then confirm the catalog row is **Enabled** and **Live**.
-4. Open the public payment page and verify the name, description, price, and
-   configured rail terms: eligible tokens for Crypto and currency/provider mode
-   for Card.
-5. Create one small environment-appropriate checkout. Confirm it appears under
-   **Orders** and **Order Reconciliation** before connecting fulfillment.
-
-Custom-amount checkout is suitable for donations, tips, and other
-buyer-controlled amounts. Use a Product or an authenticated Checkout Session
-when the merchant must control the price. Never fulfill solely from a browser
-success callback; use a trusted webhook or backend order/session status.
+Use custom amounts for buyer-controlled payments such as tips. Use a Product
+or an authenticated Checkout Session for merchant-controlled prices.
+For a Product button, developers can use the
+[Checkout SDK](../goatx402-checkout/README.md#product-checkout).
+The browser supplies the merchant and product key, not the price.
 
 ### 12.3 Public agent and CLI access
 
-The QuickPay library uses the shared QuickPay
-link origin as its trust anchor, derives every endpoint from that origin, requires
-HTTPS except for loopback development, validates the manifest, and does not use
-merchant API credentials on the buyer side.
+Share the portal's `agent.md` link with payer integrations. `manifest.json`
+provides machine-readable payment methods, pricing, and routes. The buyer
+does not need your merchant API credentials.
 
-| Surface | API path |
-| --- | --- |
-| Public discovery | `GET /quickpay/v1/merchants/:merchant_id` |
-| Agent guide | `GET /paykit/:merchant_id/agent.md` (legacy `/quickpay/...`) |
-| Manifest | `GET /paykit/:merchant_id/manifest.json` (legacy `/quickpay/...`) |
-| Create x402 session | `POST /quickpay/v1/x402/sessions` |
-| Create Card checkout link | `POST /quickpay/v1/fiat/sessions` |
-| Get session status | `GET /quickpay/v1/x402/sessions/:session_id` |
-
-For custom amounts, `POST /quickpay/v1/x402/sessions` accepts `merchant_id`, `payer_addr`, `chain_id`, `token_contract`, `amount_wei`, optional `memo`, and optional `idempotency_key`.
-
-For product sessions, send `product_key` with `merchant_id`, `payer_addr`, `chain_id`, `token_contract`, and optional `idempotency_key`.
-
-Browser merchants can open a Product payment page with `goatflow-checkout`
-using `open({ merchant, productKey })` and no merchant secret in the page. It
-can offer Crypto, Card, or both according to merchant and Product
-configuration. PayKit's `create-card-checkout` / `createFiatCheckoutLink()` is
-another way to create a Card payment link directly. The payer completes payment
-on the hosted page. Dynamic DIRECT carts use an HMAC-created Checkout Session;
-see
-[Hosted Checkout](goat-flow-checkout.md).
-
-PayKit agent/CLI entry points (see
-[release status and migration](README.md#npm-packages)). Both `/paykit/` and
-legacy `/quickpay/` merchant links are accepted:
-
-```bash
-npx goatflow-paykit inspect \
-  https://flow-quickpay.goat.network/paykit/<merchant_id>/agent.md --json
-
-npx goatflow-paykit pay-x402 https://flow-quickpay.goat.network/paykit/<merchant_id>/agent.md \
-  --amount <amount> --token-contract <token_contract> --chain <chain_id> \
-  --idempotency-key <payment_intent_id>
-
-npx goatflow-paykit pay-product https://flow-quickpay.goat.network/paykit/<merchant_id>/agent.md \
-  --product <product_key> --token-contract <token_contract> --chain <chain_id> \
-  --idempotency-key <payment_intent_id>
-
-npx goatflow-paykit pay-mpp https://flow-quickpay.goat.network/paykit/<merchant_id>/agent.md \
-  --route GET:api:data
-
-npx goatflow-paykit create-card-checkout \
-  https://flow-quickpay.goat.network/paykit/<merchant_id>/agent.md \
-  --product <product_key>
-```
-
-`create-card-checkout` creates a hosted URL and returns
-`human_action_required: true`; the payer must still enter card details and
-complete the page. The link is not payment confirmation.
-
-Operational rules:
-
-- Read Crypto chain/token terms, Card currency/Product terms, and MPP routes
-  from `manifest.json`; do not substitute values from a screenshot.
-- Wallet-key precedence is `--wallet-file`, `--wallet`,
-  `PAYKIT_PRIVATE_KEY`, then legacy `QUICKPAY_PRIVATE_KEY`; the first non-empty
-  environment value wins. Passing a key with `--wallet` can leak through
-  process listings, shell history, logs, and agent transcripts, so prefer
-  `PAYKIT_PRIVATE_KEY` or a permission-restricted file.
-- RPC precedence is `PAYKIT_RPC_<chainId>`, legacy
-  `QUICKPAY_RPC_<chainId>`, `--rpc`, `PAYKIT_RPC`, then legacy
-  `QUICKPAY_RPC`. Per-chain environment configuration intentionally overrides
-  the command-line fallback.
-- Reuse one idempotency key for retries of the same QuickPay intent. A reused
-  session is resumed rather than automatically paid again.
-- Do not use `--force` unless you have independently established that no transfer
-  was broadcast for the reused session.
-- Retain the returned session/order ID and transaction hash, then reconcile the
-  trusted backend status before fulfillment.
-- QuickPay session terminal states are `PAYMENT_CONFIRMED`, `EXPIRED`, `FAILED`,
-  and `CANCELLED`; this is separate from the Server SDK order model, which also
-  treats `INVOICED` as a successful terminal state.
-- Polling is bounded by a hard overall timeout. A known transaction hash is
-  retained across poll failures, and `EXPIRED` with a known hash receives five
-  bounded grace polls for a possible late confirmation. Never rebroadcast solely
-  because status polling or receipt verification failed.
-
-Agents should use `manifest.json` as the machine-readable capability and pricing
-surface and validate every command shown by `agent.md` against the installed
-`goatflow-paykit` package.
+Agent installation, wallet/RPC configuration, payment commands, idempotency,
+and recovery are maintained in the [PayKit README](../goatx402-quickpay/README.md).
+Creating a Card link still requires a person to complete the hosted payment;
+the link itself is not payment confirmation.
 
 ### 12.4 Paid API Routes (MPP)
 
-**Payment Setup → Paid API Routes (MPP)**
-configures **fixed-price protected API endpoints** that agents pay for through
-the Machine Payments Protocol (MPP).
+This optional setup configures GOAT Flow's MPP profile for fixed-price API access.
+It is not needed for ordinary hosted checkout. MPP is an independent open
+protocol; GOAT Flow's profile uses its own JSON endpoints and signed receipts.
 
-**About MPP.** [MPP](https://mpp.dev/overview) is an independent open
-protocol, not a GOAT Flow protocol. This portal configures GOAT Flow's current
-MPP integration profile. Its JSON endpoints, direct ERC-20 transfer, and signed
-three-segment receipt are GOAT-specific implementation contracts, not the
-generic MPP wire format.
-
-MPP availability and supported chains are runtime configuration. Do not
-hardcode the page's descriptive copy or a single chain ID.
-Read the active chain selector, supported tokens, receiving rows, and public
-manifest.
-
-Route management requires:
-
-- the **Owner** role
-- an enabled merchant in **DIRECT** mode
-- Paid API Routes enabled for the merchant
-- a supported chain/token pair
-- a matching receiving address
-
-Configure and operate an MPP route in this order:
-
-1. Define the protected HTTP method and path in application code first.
-2. Convert it to the portal's canonical colon-delimited identifier, for example
-   `GET /api/docs/protected` → `GET:api:docs:protected`.
-3. Add and verify the route's intended receiving chain/token under **Receiving
-   Tokens & Addresses**.
-4. Open **Paid API Routes (MPP)** and confirm the status card says routes are
-   manageable.
-5. Select **Add Route**, enter the canonical route, version, active
-   network/token, and fixed decimal amount, then save.
-6. Confirm the new row is active and shows the expected token contract,
-   receiving address, and amount.
-7. Open the public QuickPay `manifest.json` and confirm the MPP rail contains the
-   exact route and current pricing version.
-8. Run a Testnet3 buyer flow: request the challenge, broadcast exactly the
-   instructed ERC-20 amount, verify the transaction, and call the protected
-   endpoint with the returned `Payment-Receipt`.
-9. Verify the resource server rejects missing, malformed, expired,
-   cross-merchant, wrong-route, and replayed receipts according to the intended
-   receipt policy.
-
-Each route row carries a paid resource path, version, network/token, payment
-token contract address, the receiving address for that token, amount, and status.
-A matching receiving address must already exist for the token before a route can
-be added.
-
-Route identifiers are colon-delimited, for example
-`GET:api:docs:protected`; slashes and spaces are not accepted by the current
-portal form.
-
-> Testnet3 may show stale helper text that mentions "Tempo only". Use the active
-> chain selector and API response to determine available routes.
+1. Define the protected method/path in your application. Convert it to the
+   portal identifier, for example `GET /api/docs/protected` → `GET:api:docs:protected`.
+2. Confirm Owner access, an enabled DIRECT merchant, MPP capability, and a
+   receiving address for the intended supported chain/token.
+3. Open **Developer → MPP Routes** (`/acceptance/mpp-routes`), select **Add Route**, and
+   enter the route, pricing version, token/network, and fixed decimal amount.
+4. Save; check the active row and public manifest for the exact route and terms.
+5. Test payment and receipt verification on the protected resource. Reject
+   missing, expired, wrong-merchant, wrong-route, and replayed receipts according
+   to your intended policy.
 
 ![Active MPP Route](./images/60-new-merchant-mpp-route.png)
 
-The current GOAT Flow MPP adapter:
-
-1. Treats `POST /mpp/v1/challenge` returning HTTP `402` as a successful payment
-   instruction.
-2. Transfers exactly the challenged token amount to the challenged recipient.
-3. Calls `POST /mpp/v1/verify`; HTTP `200` must include a valid
-   `Payment-Receipt` response header, while `202` and `429` are retried according
-   to `Retry-After`.
-4. Preserves the challenge and transaction hash in recoverable post-broadcast
-   errors so verification can resume without paying again.
-
-The merchant resource server must verify the signed receipt against the exact
-merchant, route/request canonicalization, expiry, signature, and replay policy.
-The current receipt does not carry `route_pricing_version`; Core binds pricing
-to the challenge/order, so middleware cannot independently compare that version
-without a future receipt extension. For browser use, Core must allow the DApp
-origin and expose `Payment-Receipt`, while the protected resource must allow the
-same origin and the `Payment-Receipt` request header. Multi-replica deployments
-need a shared atomic consumption store when receipts are single-use.
-
-For the protocol boundary and this profile's buyer/agent flow, see
-[GOAT Flow MPP Integration](./mpp.md).
-
----
+Use the active selector and API response for supported chains. Older Testnet3
+helper text mentioning “Tempo only” is not an availability contract.
+The [MPP guide](advanced/mpp.md) owns client, middleware, receipt, and recovery details.
 
 <a id="13-balance-fees-and-topup"></a>
 
@@ -968,11 +589,11 @@ For the protocol boundary and this profile's buyer/agent flow, see
 
 > **Environment note:** screenshots in this section show Testnet3. Mainnet fee
 > amounts, supported chains and assets, limits, and top-up behavior may differ.
-> Confirm the live Mainnet **Billing** pages before launch, and do not perform a
+> Confirm the live Mainnet **GOAT Flow Fees** pages before launch, and do not perform a
 > Mainnet top-up without authorization.
 
-Open **Billing → Fee Balance** to view service-fee credits; use **Billing → Fee
-Top-up** to add service-fee credits.
+Open **GOAT Flow Fees → Fee Balance** to view service-fee credits; use
+**GOAT Flow Fees → Top Up Fee Balance** to add service-fee credits.
 
 ![Testnet3 New Merchant Fee Balance](./images/48-new-merchant-fee-balance.png)
 
@@ -1072,31 +693,20 @@ share or publish unredacted audit data.
 
 ---
 
-## Appendix: Quick Start Checklist
+## Launch checks
 
-Complete the following steps to start accepting the configured payment methods:
-
-- [ ] 1. Register a merchant account
-- [ ] 2. Wait for admin approval
-- [ ] 3. Log in and optionally enable 2FA
-- [ ] 4. For Crypto, add receiving addresses for each accepted Chain + Token; for Card, complete the deployment's merchant/provider enablement
-- [ ] 5. Choose the integration path: QuickPay/Products or authenticated programmatic APIs
-- [ ] 6. If using programmatic APIs, generate API keys and save the API Secret server-side
-- [ ] 7. If using webhooks, configure the callback and save its one-time secret
-- [ ] 8. Verify Mainnet fees independently; use Testnet3 top-up only with Testnet3 assets and wallets
-- [ ] 9. If using QuickPay, publish the hosted link and optionally create Products or MPP routes
-- [ ] 10. Complete a small environment-appropriate Crypto or Card test payment, confirm it in Orders and Order Reconciliation, and exercise the deployment's fulfillment-state contract
-
-```bash
-# Install SDKs
-npm install goatflow-sdk@0.3.0 goatflow-sdk-server@0.4.0
-
-# Backend configuration
-GOATX402_API_URL=https://flow-api.goat.network
-GOATX402_API_KEY=your_API_Key
-GOATX402_API_SECRET=your_API_Secret
-```
-
----
+- [ ] Merchant is approved and enabled; security, recovery, and team roles are reviewed.
+- [ ] Production origins, credentials, products, receiving settings, fees, and
+      webhooks were checked against the live deployment, separately from Testnet3.
+- [ ] Crypto receiving chain/token/recipient configuration is correct; Card
+      eligibility, currency, connected account, and provider test/live mode are confirmed.
+- [ ] Merchant fee balance and top-up ownership cover expected traffic.
+- [ ] API secrets are backend-only; any return URLs match the merchant allowlist.
+- [ ] An environment-appropriate payment completed end to end. The backend checked
+      expected terms and fulfilled once; the result can be reconciled.
+- [ ] Failed, cancelled, expired, delayed, duplicate, and ambiguous attempts were
+      exercised without duplicate payment or fulfillment. Webhooks, if used,
+      passed the deployment-confirmed authentication and replay checks.
+- [ ] Monitoring, escalation, and launch ownership are recorded.
 
 Support: [Support@goat.network](mailto:Support@goat.network)

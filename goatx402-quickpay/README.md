@@ -226,6 +226,6 @@ npm run test:run    # vitest
 npm run build       # emit dist/
 ```
 
-See the [QuickPay integration guide](../docs/goat-flow-integration.md#8-quickpay),
-[GOAT Flow MPP integration profile](../docs/mpp.md), and
+See the [QuickPay integration guide](../docs/goat-flow-api-reference.md#10-quickpay),
+[GOAT Flow MPP integration profile](../docs/advanced/mpp.md), and
 [Changelog](./CHANGELOG.md).

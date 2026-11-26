@@ -70,7 +70,7 @@ This basic example covers DIRECT. In an explicitly operator-provisioned callback
 environment, map `calldataSignRequest`, sign its exact EIP-712 payload on the
 returned domain chain, submit it through the merchant backend, and switch back
 to the transfer source chain before paying. See the
-[full integration guide](../docs/goat-flow-integration.md#51-typescript-client).
+[callback compatibility contract](../docs/goat-flow-api-reference.md#appendix-a-operator-provisioned-callback-compatibility).
 
 `PaymentHelper.pay()` checks the token balance, sends
 `transfer(order.payToAddress, order.amountWei)`, waits for a successful receipt,
@@ -187,7 +187,7 @@ import {
 ```
 
 See [the package integration guide](./docs/Integration.md),
-[the repository integration guide](../docs/goat-flow-integration.md), and the
+[the custom wallet guide](../docs/advanced/custom-wallet.md), and the
 [Changelog](./CHANGELOG.md).
 
 ## License

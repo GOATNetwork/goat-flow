@@ -120,6 +120,11 @@ merchant eligibility, and connected-provider status. Creating the session is
 not payment confirmation. Confirm provider test/live mode before entering card
 details; it cannot be inferred from the chain ID.
 
+Before adding `successUrl` or `cancelUrl`, configure the merchant's
+[Checkout redirect allowlist](../docs/merchant-guide.md#checkout-return-urls).
+The published `0.4.0` API does not expose submission protocol 1 or checkout
+renewal; see the [published SDK boundary](../docs/goat-flow-api-reference.md#published-sdk-boundary).
+
 `clientReferenceId` is a unique merchant correlation value, not a lookup or
 idempotent-replay API. A same-merchant duplicate conflicts instead of returning
 the original `checkoutId` or URL, so persist both values from the first
@@ -196,7 +201,7 @@ Helpers:
 - `toCAIP2`, `fromCAIP2`, `parseX402Header`
 
 See the canonical [API contract](../docs/goat-flow-api-reference.md),
-[integration guide](../docs/goat-flow-integration.md), [demo server](../goatx402-demo/server/index.ts),
+[integration guide](../docs/goat-flow-developer-quickstart.md), [demo server](../goatx402-demo/server/index.ts),
 and [Changelog](./CHANGELOG.md).
 
 ## License

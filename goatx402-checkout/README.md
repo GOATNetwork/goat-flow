@@ -7,8 +7,9 @@ hosted page can offer a direct ERC-20 transfer or Card. Crypto payers connect a
 wallet and need token balance plus native gas; Card payers complete the hosted
 card flow and do not need a crypto wallet.
 
-See the public [Hosted Checkout guide](../docs/goat-flow-checkout.md) for the
-complete Crypto and Card flow and server SDK examples.
+Start with the [Developer Quick Start](../docs/goat-flow-developer-quickstart.md)
+for hosted crypto checkout. Card session fields and an example are in the
+[API Reference](../docs/goat-flow-api-reference.md#9-hosted-checkout-sessions).
 
 ## Install
 
@@ -132,7 +133,9 @@ fields and signature endpoint.
 - `onSuccess` is only a UX event. Fulfill from verified backend status or an
   authenticated webhook contract confirmed for the deployment; the public SDK
   does not define one canonical webhook event name.
-- Redirect URLs are honored only when allowed by the merchant's redirect allowlist.
+- Redirect URLs are honored only when allowed by the merchant's redirect
+  allowlist. Follow [Configure return URLs](../docs/merchant-guide.md#checkout-return-urls)
+  before creating a session with `successUrl` or `cancelUrl`.
 - A strict `Cross-Origin-Opener-Policy` can sever the popup channel; use redirect
   mode when `onError('opener_unavailable')` is reported.
 

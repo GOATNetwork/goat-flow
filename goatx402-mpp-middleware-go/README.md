@@ -18,12 +18,15 @@ github.com/goatnetwork/goatflow-mpp-middleware-go
 ## Install
 
 This module is source-only in this repository and is not published from a
-standalone source repository. Clone `GOATNetwork/x402`, then bind the logical
-module path to the checked-in directory:
+standalone source repository. Clone
+[`GOATNetwork/goat-flow`](https://github.com/GOATNetwork/goat-flow), then bind
+the logical module path to the checked-in directory. The commands below assume
+a sibling clone named `goat-flow`; adjust the local path for your layout and
+pin the source revision used by your app.
 
 ```bash
 go mod edit -require=github.com/goatnetwork/goatflow-mpp-middleware-go@v0.0.0
-go mod edit -replace=github.com/goatnetwork/goatflow-mpp-middleware-go=../x402/goatx402-mpp-middleware-go
+go mod edit -replace=github.com/goatnetwork/goatflow-mpp-middleware-go=../goat-flow/goatx402-mpp-middleware-go
 ```
 
 Add the imports shown below, then run `go mod tidy`. The checked-in module
@@ -114,5 +117,5 @@ errors fail during startup instead of on the first paid request.
 
 See:
 
-- [GOAT Flow MPP integration profile](../docs/mpp.md)
+- [GOAT Flow MPP integration profile](../docs/advanced/mpp.md)
 - [Runnable example](./example_test.go)

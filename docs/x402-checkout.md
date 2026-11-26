@@ -1,6 +1,6 @@
-# Hosted Checkout
+# Hosted checkout guide moved
 
-This path is retained for compatibility with previously published package
-documentation.
+See the [Developer Quick Start](goat-flow-developer-quickstart.md) or the
+[Checkout SDK](../goatx402-checkout/README.md#product-checkout).
 
-See the current [GOAT Flow Hosted Checkout Guide](./goat-flow-checkout.md).
+This path remains for links in previously published packages.
