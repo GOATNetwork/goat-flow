@@ -6,7 +6,7 @@ examples. For crypto DIRECT payments, the buyer transfers ERC-20 tokens to the
 merchant's receiving address. Card payers complete the hosted provider flow.
 Available payment methods depend on the deployment and merchant configuration.
 
-**Integrating an application? Start with the
+**For hosted crypto checkout on Testnet3 using TypeScript, start with the
 [Developer Quick Start](docs/goat-flow-developer-quickstart.md).** It follows
 one path: create a payment session on your backend, open hosted checkout, and
 confirm payment before fulfillment.
