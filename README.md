@@ -27,7 +27,8 @@ confirm payment before fulfillment.
 | [Go server SDK](goatx402-sdk-server-go/README.md) | Go merchant backend; check its documented limitations |
 | [goatflow-sdk](goatx402-sdk/README.md) | Custom EVM wallet UI and GOAT Flow MPP adapter |
 | [goatflow-paykit](goatx402-quickpay/README.md) | Agent and CLI payer tools; replaces goatflow-quickpay |
-| MPP middleware: [TypeScript](goatx402-mpp-middleware-ts/README.md), [Go](goatx402-mpp-middleware-go/README.md) | Verify GOAT Flow profile receipts on a resource server |
+| [MPP middleware (TypeScript)](goatx402-mpp-middleware-ts/README.md) | Verify GOAT Flow profile receipts on a TypeScript resource server |
+| [MPP middleware (Go)](goatx402-mpp-middleware-go/README.md) | Verify GOAT Flow profile receipts on a Go resource server |
 | [Demo](goatx402-demo/README.md) | Local integration examples |
 | [Contracts](goatx402-contract/README.md) | Optional callback contracts and local test tokens |
 
