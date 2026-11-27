@@ -182,9 +182,10 @@ from the other. Merchant fiat enablement, currency support, connected Stripe
 status, and Stripe test/live mode are deployment configuration. The payer must
 still complete the hosted page; creating a link is not confirmation.
 
-Return only the opaque `session.checkoutId` and non-sensitive display data to
-the browser. The current return type is `CheckoutSession`, containing
-`checkoutId`, `checkoutType`, `url`, and `expiresAt`.
+Save the session and validate its URL against the selected environment's
+Checkout origin on the backend. Return `{ checkoutId, url }` to the browser
+and keep merchant credentials on the backend. See the
+[Quick Start example](../goat-flow-developer-quickstart.md#3-create-and-save-a-session-on-the-backend).
 
 Use `display: 'popup'` by default, `tab` for a new tab, and `redirect` when the
 opener channel is unavailable. `redirectToCheckout()` and redirect display do

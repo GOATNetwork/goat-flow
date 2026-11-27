@@ -39,14 +39,15 @@ This example uses the Mainnet Checkout origin; use
 Testnet3 merchant/Product when testing there.
 
 ```ts
-import { GoatCheckout } from 'goatflow-checkout'
+import { GoatCheckout, type CheckoutHandle } from 'goatflow-checkout'
 
 const goat = GoatCheckout({ origin: 'https://flow-quickpay.goat.network' })
 
 button.addEventListener('click', () => {
-  goat.open({
-    merchant: 'acme',
-    productKey: 'mug',
+  const product = { merchant: 'acme', productKey: 'mug' }
+  let handle: CheckoutHandle
+  handle = goat.open({
+    ...product,
     display: 'popup', // also: 'tab' or 'redirect'
     onSuccess: (result) => {
       // UX signal only; fulfill from the webhook or verified order status.
@@ -55,7 +56,9 @@ button.addEventListener('click', () => {
     onCancel: () => {},
     onError: (reason) => {
       if (reason === 'opener_unavailable') {
-        // A strict COOP policy severed the popup channel; use redirect mode.
+        // The original window may still be showing checkout.
+        handle.close()
+        goat.redirectToCheckout(product)
       }
     },
   })
@@ -67,11 +70,13 @@ the popup or tab.
 
 ## Hosted Checkout Session
 
-Dynamic DIRECT checkout starts on the merchant backend. Create a
-server-authoritative session with `goatflow-sdk-server`, return only the opaque
-`checkoutId` to the browser, then open it with this package:
+Create the DIRECT session with `goatflow-sdk-server` on the backend. Save it
+and check its URL against the configured Checkout origin before returning
+`{ checkoutId, url }` to the browser, as in the [Quick Start](../docs/goat-flow-developer-quickstart.md#3-create-and-save-a-session-on-the-backend).
+Keep merchant credentials on the backend. In the browser:
 
 ```ts
+const goat = GoatCheckout({ origin: new URL(session.url).origin })
 goat.open({
   checkoutId: session.checkoutId,
   display: 'tab',
@@ -136,8 +141,9 @@ fields and signature endpoint.
 - Redirect URLs are honored only when allowed by the merchant's redirect
   allowlist. Follow [Configure return URLs](../docs/merchant-guide.md#checkout-return-urls)
   before creating a session with `successUrl` or `cancelUrl`.
-- A strict `Cross-Origin-Opener-Policy` can sever the popup channel; use redirect
-  mode when `onError('opener_unavailable')` is reported.
+- On `opener_unavailable`, the popup may remain open. If switching to the
+  current tab, call the original handle's `close()` before redirecting to the
+  same session or Product, as in [Product checkout](#product-checkout).
 
 Server-created sessions default to `/paykit/direct` or `/paykit/delegate`.
 Pass `checkoutType: 'DELEGATE'` for the latter; DIRECT is the default.

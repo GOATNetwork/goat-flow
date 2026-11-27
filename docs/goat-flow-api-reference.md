@@ -91,6 +91,7 @@ strings:
 - `private_metadata_json`
 
 Do not expose the API secret or HMAC code in the browser.
+For authentication errors, see [Merchant API 401](goat-flow-faq.md#the-merchant-api-returned-http-401).
 
 ## 3. Merchant endpoint summary
 
@@ -442,11 +443,12 @@ The exported `CheckoutSession.checkoutType` / Go `CheckoutType` response field
 is typed as `string`. Known current values are `DIRECT` and `DELEGATE`; handle an
 unknown future value explicitly.
 
-The browser receives only the opaque checkout ID. Use the Checkout origin from
-the same deployment as session creation; this example matches Testnet3 above:
+The backend saves the session, checks the returned URL against its configured
+Checkout origin, and sends `{ checkoutId, url }` to the browser. Keep API
+credentials on the backend. With these validated values:
 
 ```ts
-const goat = GoatCheckout({ origin: 'https://flow-quickpay.testnet3.goat.network' })
+const goat = GoatCheckout({ origin: new URL(session.url).origin })
 goat.open({ checkoutId: session.checkoutId })
 ```
 
@@ -492,11 +494,20 @@ deployment before integrating:
 | `order_status` | Linked order's state, when available |
 | `tx_hash` | Linked order's transaction hash, when available |
 
+| Session `status` | Meaning |
+| --- | --- |
+| `OPEN` | Session is open. A Card order can already be linked and processing or held. |
+| `BOUND` | A crypto order is linked to the session. |
+| `SIGNED` | A signature was submitted in an operator-provisioned callback flow. Public DIRECT checkout skips this step. |
+| `COMPLETED` | The linked order reached `INVOICED`. Verify the purchase and fulfillment eligibility before delivery. |
+| `EXPIRED` | The payment window expired. Reconcile any transfer already submitted. |
+| `CANCELLED` | The session or linked order was cancelled. |
+| `FAILED` | The linked order failed. Withhold fulfillment. |
+
 For crypto, resolve `order_id` from your persisted checkout handle, then use
 the authenticated [order status](#5-read-order-status) and [proof](#6-read-proof)
 APIs. Match the expected business payment terms before fulfilling once.
-The checkout state and order state are different: Core maps an `INVOICED`
-order to checkout `COMPLETED`. Do not wait for `COMPLETED` in an order waiter.
+Use `order_status` when checking an order and `status` when checking a session.
 An absent order ID, network error, or delayed status is not proof of non-payment.
 The crypto order/proof procedure does not define Card confirmation; use the
 deployment's trusted Card status/webhook contract.
@@ -568,6 +579,41 @@ derives all called endpoints from that trusted origin; the API prefix remains
 A `client_reference_id` supplied through a public QuickPay endpoint is
 buyer-controlled correlation data. It does not prove merchant authorization,
 business-order ownership, or payment and must not authorize fulfillment alone.
+
+### Read a merchant manifest
+
+Example fields from `GET /paykit/acme/manifest.json`. The token address and
+limits are illustrative. Read the merchant's manifest for the selected environment.
+
+```json
+{
+  "schema": "goatx402.quickpay.v1",
+  "merchant": { "merchant_id": "acme" },
+  "rails": {
+    "x402": {
+      "enabled": true,
+      "custom_amount": true,
+      "tokens": [{
+        "chain_id": 48816,
+        "token_symbol": "USDC",
+        "token_contract": "0x1111111111111111111111111111111111111111",
+        "decimals": 6,
+        "min_amount_wei": "1000000",
+        "max_amount_wei": "25000000"
+      }]
+    },
+    "mpp": { "enabled": false, "routes": [] },
+    "fiat": {
+      "enabled": true, "custom_amount": true, "human_action_required": true,
+      "currency": "USD", "minor_unit_exponent": 2
+    }
+  }
+}
+```
+
+The limits apply to that token in base units, so this example allows 1 to 25
+tokens. `max_amount_wei` is optional. The fiat rail creates a hosted Card link
+for the buyer to complete.
 
 ### Create public x402 session
 
@@ -706,7 +752,7 @@ QuickPay configuration includes `quickpay_enabled`, `display_name`,
 `description`, `logo_url`, `memo_required`, `max_amount_wei`,
 `max_open_sessions`, `daily_session_limit`, and `max_open_sessions_merchant_wide`.
 
-Public Product fields are `product_key` (matching `^[A-Za-z0-9._:~-]{1,64}$`),
+Public Product fields are `product_key` (matching `^[A-Za-z0-9._:~-]{1,64}$`, excluding `.` and `..`),
 `name`, optional `description`/HTTPS `image_url`, and a positive decimal `price`.
 The portal additionally exposes `enabled` and `sort_order`; the current public
 manifest/client do not export or validate those fields. The product key is the

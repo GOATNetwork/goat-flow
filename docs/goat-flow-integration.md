@@ -11,7 +11,8 @@ For an operator-provisioned callback flow, use the
 
 <a id="8-quickpay"></a>
 
-For QuickPay / PayKit, use the [PayKit README](../goatx402-quickpay/README.md).
+For QuickPay sessions, product links, and payment methods, see the
+[QuickPay API reference](goat-flow-api-reference.md#10-quickpay).
 For paid APIs, use the [MPP guide](advanced/mpp.md).
 
 This path remains for links in previously published packages.

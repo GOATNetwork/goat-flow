@@ -9,6 +9,17 @@ For `POST /api/v1/orders`, `402` is the successful payment challenge; both
 server SDKs normalize it. A `402` from status, proof, cancellation, or session
 creation is an error. See the [endpoint table](goat-flow-api-reference.md#3-merchant-endpoint-summary).
 
+## The merchant API returned HTTP 401
+
+1. Check that the API URL, API key, and secret belong to the same environment.
+2. Synchronize the backend clock and send the current Unix timestamp in seconds.
+3. Generate a fresh nonce and signature for each request, including retries.
+
+The server SDK signs requests for you. For a custom HTTP client, compare the
+values you sign with the fields you send using the [HMAC rules](goat-flow-api-reference.md#2-hmac-authentication).
+Keep the secret out of logs. Before retrying a create request with an unknown
+outcome, [reconcile the original attempt](#a-duplicate-id-returned-a-conflict).
+
 ## Checkout creation returned 400 or a return URL was rejected
 
 Check the response code/body, then the session fields and merchant eligibility.

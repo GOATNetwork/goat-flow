@@ -31,9 +31,10 @@ portal for your selected environment:
 3. Create API credentials under **Developer → API & Checkout Settings** and save
    the secret on your backend. Older portal labels are shown in the Merchant Guide.
 
-The buyer needs the selected token and native gas on the same chain. Use test
-assets for Testnet3 and fund the buyer with real assets for Mainnet. Read the
-available chains and tokens from that environment's merchant configuration.
+The buyer needs the selected token and native gas on the same chain. On GOAT,
+gas is paid in BTC. Get test BTC from the [Testnet3 faucet](https://bridge.testnet3.goat.network/faucet).
+Find each network's RPC and block explorer in [Networks and RPC](https://docs.goat.network/docs/build/networks-rpc).
+Use the tokens enabled for your merchant in the selected environment. Mainnet uses real funds.
 Portal instructions are in the [Merchant Guide](merchant-guide.md).
 
 ## 2. Install and configure
@@ -70,9 +71,8 @@ GOATX402_API_SECRET=your_testnet_api_secret
 GOATX402_MERCHANT_ID=your_testnet_merchant_id
 ```
 
-`GOATX402_CHECKOUT_ORIGIN` is an application setting used by the backend status
-read in step 5. The browser uses the origin of the session URL returned by your
-backend in step 3.
+Your backend uses `GOATX402_CHECKOUT_ORIGIN` to validate the session URL before
+sharing it with the browser and to read the session status in step 5.
 
 Keep the API secret out of frontend environment variables and browser bundles.
 Use credentials, products, and checkout origins from the same environment;
@@ -81,7 +81,7 @@ see the [environment table](goat-flow-api-reference.md#1-origins-and-configurati
 ## 3. Create and save a session on the backend
 
 ```ts
-import { GoatFlowClient } from 'goatflow-sdk-server'
+import { GoatFlowClient, type CheckoutSession } from 'goatflow-sdk-server'
 
 const flow = new GoatFlowClient({
   baseUrl: process.env.GOATX402_API_URL!,
@@ -89,16 +89,30 @@ const flow = new GoatFlowClient({
   apiSecret: process.env.GOATX402_API_SECRET!,
 })
 
+const checkoutOrigin = new URL(process.env.GOATX402_CHECKOUT_ORIGIN!)
+
+export function checkoutForBrowser(session: Pick<CheckoutSession, 'checkoutId' | 'url'>) {
+  const url = new URL(session.url)
+  if (url.origin !== checkoutOrigin.origin || url.protocol !== checkoutOrigin.protocol ||
+      url.username || url.password) {
+    throw new Error('Checkout URL does not match the configured checkout origin')
+  }
+  return { checkoutId: session.checkoutId, url: url.href }
+}
+
 export async function createPaymentSession(
   paymentIntentId: string,
   serverPrice: string,
+  saveSession: (session: CheckoutSession) => Promise<void>,
 ) {
-  return flow.createCheckoutSession({
+  const session = await flow.createCheckoutSession({
     checkoutType: 'DIRECT',
     paymentRails: ['crypto'],
     price: serverPrice, // Decimal price from your server's cart, e.g. '9.99'.
     clientReferenceId: paymentIntentId,
   })
+  await saveSession(session)
+  return checkoutForBrowser(session)
 }
 ```
 
@@ -108,12 +122,12 @@ Connect this function to your own authenticated route, for example
 1. Load the application order and check that the signed-in buyer owns it.
 2. Read its price from your database and allocate one stable payment-intent ID.
    Serialize creation for that intent so double-clicks cannot create two payments.
-3. For a new intent with no previous creation attempt, call the function once.
-   Persist `checkoutId`, `url`, `expiresAt`, environment, and expected price
-   against the order **before** returning `{ checkoutId, url }` to the browser.
-   On repeat requests, check the saved attempt: resume an eligible session or
-   return the known payment state. Reconcile expired, failed, or unresolved
-   attempts before authorizing any replacement; do not automatically create one.
+3. Call the function once for a new intent. Supply a `saveSession` callback that
+   stores `checkoutId`, `url`, `expiresAt`, environment, and expected price
+   against the order. On a repeat request, use `checkoutForBrowser` on the saved
+   session if it is still payable. Otherwise return the known payment state.
+   If URL validation fails, withhold the payment link and reconcile the saved
+   attempt before authorizing a replacement.
 
 A duplicate `clientReferenceId` returns a conflict, not the previous session.
 If creation times out or the response is lost, mark the attempt unresolved and
@@ -165,15 +179,22 @@ crypto binding. Then read that order through the authenticated server SDK:
 export async function readCryptoPayment(checkoutId: string) {
   const statusUrl = new URL(
     `/checkout/v1/sessions/${encodeURIComponent(checkoutId)}/status`,
-    process.env.GOATX402_CHECKOUT_ORIGIN!,
+    checkoutOrigin,
   )
   const response = await fetch(
     statusUrl,
-    { signal: AbortSignal.timeout(15_000), redirect: 'error', cache: 'no-store' },
+    { signal: AbortSignal.timeout(15_000), redirect: 'error' },
   )
   if (!response.ok) throw new Error(`Checkout status failed: ${response.status}`)
-  const session: { status: string; order_id?: string } = await response.json()
-  if (!session.order_id) return { checkoutStatus: session.status }
+  const session: unknown = await response.json()
+  if (!session || typeof session !== 'object' || !('status' in session) ||
+      typeof session.status !== 'string' || !session.status) {
+    throw new Error('Invalid checkout status')
+  }
+  if (!('order_id' in session)) return { checkoutStatus: session.status }
+  if (typeof session.order_id !== 'string' || !session.order_id) {
+    throw new Error('Invalid checkout order ID')
+  }
 
   const order = await flow.getOrderStatus(session.order_id)
   if (order.merchantId !== process.env.GOATX402_MERCHANT_ID ||
@@ -195,9 +216,11 @@ Call this from a backend job or your application's authenticated order-status
 route. An absent order means there is no crypto order to confirm yet; a failed
 request means the result is unknown. Neither means the buyer should pay again.
 
-Before fulfillment, compare the returned order and proof with the saved
-business order: merchant/session mapping, accepted chain and token, exact
-amount for that token's decimals, receiving address, and transaction identity.
+Before fulfillment, match the merchant, session, chain, token contract, and
+transaction to the saved purchase. Use the token decimals and expected receiving
+address from your trusted merchant configuration for that chain and token.
+Compare the expected amount in base units with `proof.payload.amount_wei`
+and the expected recipient with `proof.payload.to_addr`.
 The proof's `signature` is a digest, not a signed attestation; see
 [Read proof](goat-flow-api-reference.md#6-read-proof).
 
