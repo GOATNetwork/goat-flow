@@ -5,7 +5,7 @@ This guide covers the public contract of the browser-oriented
 `goatflow-sdk-server` or the Go server SDK.
 
 For the complete GOAT Flow API guide, see
-[GOAT Flow Integration](../../docs/goat-flow-integration.md).
+[Custom wallet integration](../../docs/advanced/custom-wallet.md).
 
 ## 1. Install and runtime boundary
 

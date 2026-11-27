@@ -148,5 +148,5 @@ const decoded = decodeHeader(paymentReceiptHeader);
 console.log(decoded.receipt.receipt_id, decoded.algorithm);
 ```
 
-See [GOAT Flow MPP integration profile](../docs/mpp.md) for the implemented
+See [GOAT Flow MPP integration profile](../docs/advanced/mpp.md) for the implemented
 buyer, challenge, transfer, and receipt lifecycle.

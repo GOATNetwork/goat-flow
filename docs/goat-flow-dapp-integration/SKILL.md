@@ -182,9 +182,10 @@ from the other. Merchant fiat enablement, currency support, connected Stripe
 status, and Stripe test/live mode are deployment configuration. The payer must
 still complete the hosted page; creating a link is not confirmation.
 
-Return only the opaque `session.checkoutId` and non-sensitive display data to
-the browser. The current return type is `CheckoutSession`, containing
-`checkoutId`, `checkoutType`, `url`, and `expiresAt`.
+Save the session and validate its URL against the selected environment's
+Checkout origin on the backend. Return `{ checkoutId, url }` to the browser
+and keep merchant credentials on the backend. See the
+[Quick Start example](../goat-flow-developer-quickstart.md#3-create-and-save-a-session-on-the-backend).
 
 Use `display: 'popup'` by default, `tab` for a new tab, and `redirect` when the
 opener channel is unavailable. `redirectToCheckout()` and redirect display do
@@ -301,7 +302,7 @@ Checkout for an interactive browser DApp unless the application already owns a
 safe wallet backend.
 
 Use published `goatflow-paykit@0.4.0`; see
-[release status and migration](../README.md#npm-packages). `QuickPayClient`
+[release status and migration](../goat-flow-api-reference.md#14-runtime-capability-and-version-sources). `QuickPayClient`
 retains its name.
 
 Accept only canonical merchant links:
@@ -554,6 +555,6 @@ Consult these files when working in this repository:
 
 - [Developer Quick Start](../goat-flow-developer-quickstart.md)
 - [API Reference](../goat-flow-api-reference.md)
-- [Hosted Checkout](../goat-flow-checkout.md)
-- [Integration Guide](../goat-flow-integration.md)
-- [GOAT Flow MPP Integration](../mpp.md)
+- [Custom wallet integration](../advanced/custom-wallet.md)
+- [Checkout browser SDK](../../goatx402-checkout/README.md)
+- [GOAT Flow MPP Integration](../advanced/mpp.md)

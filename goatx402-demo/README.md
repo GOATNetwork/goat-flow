@@ -156,7 +156,7 @@ hook. Its template arguments are static demo values:
 `originalPayer` nor validates `payer` or `value` against the payment. See the
 canonical
 [`MerchantCallback` behavior](../goatx402-contract/MERCHANT_CALLBACK.md#calldata-execution-semantics)
-and [hosted checkout guide](../docs/goat-flow-checkout.md).
+and [callback compatibility contract](../docs/goat-flow-api-reference.md#appendix-a-operator-provisioned-callback-compatibility).
 
 ## Optional MPP Mode
 

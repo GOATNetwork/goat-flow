@@ -4,8 +4,17 @@ This reference describes the API and wire behavior used by the TypeScript and
 Go server SDKs, browser SDK, QuickPay package, and GOAT Flow MPP adapter.
 
 For a tutorial, start with the
-[Developer Quick Start](./goat-flow-developer-quickstart.md). For package composition
-and production boundaries, see the [Integration Guide](./goat-flow-integration.md).
+[Developer Quick Start](./goat-flow-developer-quickstart.md).
+Use this page to look up a specific contract or limitation.
+
+| Look up | Section |
+| --- | --- |
+| Environment URLs | [Origins](#1-origins-and-configuration) |
+| Signing and error handling | [HMAC](#2-hmac-authentication) · [Errors and retries](#13-error-model) |
+| Hosted checkout | [Session fields](#9-hosted-checkout-sessions) · [Status](#read-checkout-status) · [Redirect settings](#checkout-redirect-settings) |
+| Custom orders | [Create](#4-create-order) · [Status](#5-read-order-status) · [Proof](#6-read-proof) · [Cancel](#7-cancel-order) |
+| Public payments | [QuickPay / PayKit](#10-quickpay) · [MPP](advanced/mpp.md) |
+| Installed package support | [Versions and limitations](#14-runtime-capability-and-version-sources) |
 
 ## 1. Origins and configuration
 
@@ -38,6 +47,11 @@ The QuickPay client derives its public session and MPP paths from the trusted
 QuickPay link origin. It does not switch to `flow-api` from manifest endpoint
 fields. Use `flow-api` for authenticated merchant API calls and explicitly
 configured standalone MPP.
+
+Keep merchant accounts, API/webhook secrets, products, receiving configuration,
+fee balances, and payment records separate between environments. Verify
+production configuration from the live deployment; Testnet3 screenshots are
+test evidence only.
 
 ## 2. HMAC authentication
 
@@ -77,6 +91,7 @@ strings:
 - `private_metadata_json`
 
 Do not expose the API secret or HMAC code in the browser.
+For authentication errors, see [Merchant API 401](goat-flow-faq.md#the-merchant-api-returned-http-401).
 
 ## 3. Merchant endpoint summary
 
@@ -258,9 +273,12 @@ The polling helpers differ in timing and retry policy. TypeScript reads
 immediately, retries network failures, request timeouts, `408`, `429`, and
 server errors, and surfaces other deterministic 4xx errors. Each request has a
 30-second deadline bounded by the remaining overall timeout. Go waits one
-interval before its first read and retries status-read errors until a later
-poll, timeout, or context cancellation; its default HTTP client also has a
-30-second timeout.
+interval before its first read and retries all status-read errors, including
+`401`, `403`, and `404`, until a later successful poll, timeout, or context
+cancellation. Its default HTTP client has a 30-second timeout. The Go waiter's
+timeout is checked at interval ticks and does not bound an in-flight HTTP
+request. Supply a context deadline to bound the wait, or implement explicit
+`GetOrderStatus` polling to also surface deterministic errors immediately.
 
 ## 6. Read proof
 
@@ -367,6 +385,11 @@ The public DIRECT field mapping is:
 
 Use the server SDK so nested values are serialized consistently with HMAC.
 
+The authenticated merchant must match `checkout_type`. For DIRECT, offering
+Crypto requires QuickPay to be enabled; a fiat-only authenticated session does
+not. Fiat eligibility and a configured Stripe runtime are still required.
+Public QuickPay Card-link creation has its own QuickPay enablement check.
+
 Card-only TypeScript example using `goatflow-sdk-server@0.4.0` and the
 Testnet3 API:
 
@@ -420,11 +443,12 @@ The exported `CheckoutSession.checkoutType` / Go `CheckoutType` response field
 is typed as `string`. Known current values are `DIRECT` and `DELEGATE`; handle an
 unknown future value explicitly.
 
-The browser receives only the opaque checkout ID. Use the Checkout origin from
-the same deployment as session creation; this example matches Testnet3 above:
+The backend saves the session, checks the returned URL against its configured
+Checkout origin, and sends `{ checkoutId, url }` to the browser. Keep API
+credentials on the backend. With these validated values:
 
 ```ts
-const goat = GoatCheckout({ origin: 'https://flow-quickpay.testnet3.goat.network' })
+const goat = GoatCheckout({ origin: new URL(session.url).origin })
 goat.open({ checkoutId: session.checkoutId })
 ```
 
@@ -442,6 +466,95 @@ for fulfillment.
 Persist the successful `checkout_id` and `url`. A repeated non-empty
 `client_reference_id` for the same merchant returns a conflict; it is not a
 request to recover the original opaque handle.
+
+In this HMAC API, the merchant backend supplies `client_reference_id`.
+References accepted through public Product/QuickPay checkout entry points can
+instead be buyer-supplied. A reference alone proves neither merchant
+authorization nor payment; fulfill using your saved business-order/session
+mapping and verified payment terms and status.
+
+The current public SDKs do not expose submission protocol 1 or a checkout
+renewal method; see the [published SDK boundary](#published-sdk-boundary).
+
+### Read checkout status
+
+```http
+GET /checkout/v1/sessions/{checkout_id}/status
+```
+
+Call the trusted Checkout origin for the saved session's environment. This is
+a public, bearer-handle endpoint, not a merchant HMAC method. The current Core
+implementation returns these fields; verify endpoint availability on the target
+deployment before integrating:
+
+| Field | Meaning |
+| --- | --- |
+| `status` | Checkout session state |
+| `order_id` | Linked order ID, omitted before an order is bound |
+| `order_status` | Linked order's state, when available |
+| `tx_hash` | Linked order's transaction hash, when available |
+
+| Session `status` | Meaning |
+| --- | --- |
+| `OPEN` | Session is open. A Card order can already be linked and processing or held. |
+| `BOUND` | A crypto order is linked to the session. |
+| `SIGNED` | A signature was submitted in an operator-provisioned callback flow. Public DIRECT checkout skips this step. |
+| `COMPLETED` | The linked order reached `INVOICED`. Verify the purchase and fulfillment eligibility before delivery. |
+| `EXPIRED` | The payment window expired. Reconcile any transfer already submitted. |
+| `CANCELLED` | The session or linked order was cancelled. |
+| `FAILED` | The linked order failed. Withhold fulfillment. |
+
+For crypto, resolve `order_id` from your persisted checkout handle, then use
+the authenticated [order status](#5-read-order-status) and [proof](#6-read-proof)
+APIs. Match the expected business payment terms before fulfilling once.
+Use `order_status` when checking an order and `status` when checking a session.
+An absent order ID, network error, or delayed status is not proof of non-payment.
+The crypto order/proof procedure does not define Card confirmation; use the
+deployment's trusted Card status/webhook contract.
+
+### Checkout redirect settings
+
+These are portal configuration endpoints, not merchant HMAC APIs or methods
+of the published server SDK. They describe Core Checkout settings support
+reviewed on November 26, 2026; confirm that support in the target deployment.
+
+| Endpoint | Authentication | Read | Write |
+| --- | --- | --- | --- |
+| `GET/PUT /merchant/v1/checkout/settings` | Merchant access token | Owner/member | Owner |
+| `GET/PUT /admin/merchants/{merchant_id}/checkout/settings` | Admin session with completed MFA | Viewer/operator/super_admin | Operator/super_admin; CSRF checks apply |
+
+GET and successful PUT return this shape; PUT accepts the same shape:
+
+```json
+{
+  "redirect_allowlist": ["https://shop.example.com/checkout"]
+}
+```
+
+PUT replaces the entire list. Send `{"redirect_allowlist":[]}` to clear it;
+omitted/null fields, wrong types, unknown fields, or invalid entries return
+`400`. A body larger than 16 KiB returns `413`. The merchant route derives the
+merchant from the access token, not the body. These settings do not enable a
+payment method and do not require QuickPay to be enabled.
+
+The settings contract accepts at most 20 entries, each at most 512 bytes both
+before and after URL encoding. Protocol, host, and port must match. A path
+prefix matches itself and child paths: `/checkout` allows `/checkout/success`,
+not `/checkout-other`. HTTP is allowed only for `localhost`, `127.0.0.1`, or
+`[::1]`. Entries cannot contain wildcards, credentials, query strings,
+fragments, or ambiguous paths; internationalized hostnames use Punycode.
+Matching uses the encoded browser pathname, so preserve path case and percent
+encoding. The actual success/cancel URL may contain a query or fragment.
+
+An empty allowlist rejects new sessions containing either return URL with
+HTTP `400`. Changes apply to new sessions; existing authenticated sessions
+retain the return URLs approved at creation. Public product/custom URL
+parameters are instead checked against the current discovery allowlist.
+The setting is independent of enabling QuickPay or Card payments. It is not
+CORS, a webhook destination, or a Stripe OAuth callback setting.
+
+For portal steps, see [Checkout return URLs](merchant-guide.md#checkout-return-urls).
+Use merchant HMAC credentials to create sessions; settings use portal authentication.
 
 ## 10. QuickPay
 
@@ -461,7 +574,46 @@ The `goatflow-paykit` package accepts canonical `/paykit/{merchant_id}` and
 legacy `/quickpay/{merchant_id}` links, optionally ending in `/agent.md` or
 `/manifest.json`, over HTTPS (or HTTP loopback for local development). It
 derives all called endpoints from that trusted origin; the API prefix remains
-`/quickpay/v1`. See [release status and migration](./README.md#npm-packages).
+`/quickpay/v1`. See [release status and migration](goat-flow-api-reference.md#14-runtime-capability-and-version-sources).
+
+A `client_reference_id` supplied through a public QuickPay endpoint is
+buyer-controlled correlation data. It does not prove merchant authorization,
+business-order ownership, or payment and must not authorize fulfillment alone.
+
+### Read a merchant manifest
+
+Example fields from `GET /paykit/acme/manifest.json`. The token address and
+limits are illustrative. Read the merchant's manifest for the selected environment.
+
+```json
+{
+  "schema": "goatx402.quickpay.v1",
+  "merchant": { "merchant_id": "acme" },
+  "rails": {
+    "x402": {
+      "enabled": true,
+      "custom_amount": true,
+      "tokens": [{
+        "chain_id": 48816,
+        "token_symbol": "USDC",
+        "token_contract": "0x1111111111111111111111111111111111111111",
+        "decimals": 6,
+        "min_amount_wei": "1000000",
+        "max_amount_wei": "25000000"
+      }]
+    },
+    "mpp": { "enabled": false, "routes": [] },
+    "fiat": {
+      "enabled": true, "custom_amount": true, "human_action_required": true,
+      "currency": "USD", "minor_unit_exponent": 2
+    }
+  }
+}
+```
+
+The limits apply to that token in base units, so this example allows 1 to 25
+tokens. `max_amount_wei` is optional. The fiat rail creates a hosted Card link
+for the buyer to complete.
 
 ### Create public x402 session
 
@@ -583,105 +735,36 @@ transaction is reported `EXPIRED`. A forced reused session does not replace its
 local hash with an unrelated prior server hash. Reconcile by session ID and
 transaction hash rather than rebroadcasting after an ambiguous failure.
 
+### Portal configuration endpoints
+
+These use merchant portal authentication, not the HMAC server SDK. In the
+reviewed Core routes, owners and members can read configuration and list
+Products; mutations require the owner role. Portal page visibility is separate
+from these API read permissions. Confirm the target deployment's contract.
+
+| Action | Endpoint |
+| --- | --- |
+| Read/update QuickPay configuration | `GET/PUT /merchant/v1/quickpay` |
+| List/create Products | `GET/POST /merchant/v1/quickpay/products` |
+| Update/delete a Product | `PUT/DELETE /merchant/v1/quickpay/products/{product_key}` |
+
+QuickPay configuration includes `quickpay_enabled`, `display_name`,
+`description`, `logo_url`, `memo_required`, `max_amount_wei`,
+`max_open_sessions`, `daily_session_limit`, and `max_open_sessions_merchant_wide`.
+
+Public Product fields are `product_key` (matching `^[A-Za-z0-9._:~-]{1,64}$`, excluding `.` and `..`),
+`name`, optional `description`/HTTPS `image_url`, and a positive decimal `price`.
+The portal additionally exposes `enabled` and `sort_order`; the current public
+manifest/client do not export or validate those fields. The product key is the
+update/delete path identifier. For portal setup, see
+[QuickPay and Products](merchant-guide.md#12-quickpay-and-products).
+
 ## 11. GOAT Flow MPP integration endpoints
 
-[Machine Payments Protocol (MPP)](https://mpp.dev/overview) is an independent
-open protocol. This section documents the current GOAT Flow integration profile,
-not the standard MPP HTTP wire format. The current client uses dedicated JSON
-challenge and verification endpoints instead of retrying the protected resource
-with a standard MPP Credential, and its three-segment signed receipt is a GOAT
-Flow extension. No official-SDK interoperability result is currently published.
-
-### GOAT Flow profile challenge
-
-```http
-POST /mpp/v1/challenge
-Content-Type: application/json
-```
-
-```json
-{
-  "merchant_id": "merchant_123",
-  "route_canonical": "GET:api:data",
-  "request_canonical": "GET:api:data",
-  "payer_addr": "0xUser"
-}
-```
-
-For this GOAT Flow endpoint, HTTP `402` is success. The SDK accepts `expiry` and
-legacy `expiry_unix`:
-
-```json
-{
-  "challenge_id": "ch_...",
-  "expiry": 1780000000,
-  "amount_wei": "1000000",
-  "chain_id": 4217,
-  "token_contract": "0xToken",
-  "recipient": "0xRecipient",
-  "mac": "...",
-  "route_pricing_version": 1
-}
-```
-
-The returned challenge is authoritative for amount, chain, token contract,
-recipient, expiry, MAC, and pricing version. The manifest route is discovery
-metadata; never construct or override payment terms from it after the challenge
-arrives.
-
-`request_canonical` defaults to `route_canonical` in `MPPClient.pay()`. The
-server contract requires it to equal the route or use the route plus a strict
-suffix.
-
-For standalone `MPPClient`, `coreUrl` is the configured Core/API origin for the
-target deployment. In QuickPay `pay-mpp`, the adapter intentionally uses the
-trusted QuickPay link origin as `coreUrl`, keeping manifest, challenge, and
-verify requests same-origin. These origins are deployment choices and need not
-be globally identical.
-
-### GOAT Flow profile transfer
-
-`payChallenge()`:
-
-- checks challenge expiry
-- checks signer provider chain
-- broadcasts `ERC20.transfer(recipient, amountWei)`
-- returns `{ txHash, tx }` immediately without local confirmation waiting;
-  pass `txHash` to verification and use the ethers `TransactionResponse` in
-  `tx` for matching transaction-replacement recovery
-
-### GOAT Flow profile verification
-
-```http
-POST /mpp/v1/verify
-Content-Type: application/json
-```
-
-```json
-{
-  "challenge_id": "ch_...",
-  "tx_hash": "0x...",
-  "payer_addr": "0xUser",
-  "mac": "..."
-}
-```
-
-| Status | SDK behavior |
-| --- | --- |
-| `200` | Requires and decodes the GOAT Flow profile's `Payment-Receipt` extension |
-| `202` | Retry using `Retry-After` |
-| `429` | Retry using `Retry-After` |
-| other `4xx` | Terminal `MPPError` |
-| `5xx` | Bounded exponential backoff |
-| fetch rejection | Bounded retry |
-
-The default verify budget is 16 attempts; individual waits are capped at 30
-seconds. A post-broadcast failure from `pay()` carries `MPPError.recoverable` so
-the caller can resume `verifyChallenge()` without paying again.
-
-Browser Core responses must allow the DApp origin and expose
-`Payment-Receipt`; the protected resource must allow that origin and the
-`Payment-Receipt` request header. Otherwise use a server-side buyer client.
+The GOAT Flow profile's discovery, challenge, transfer, verification, receipt,
+and recovery contracts are maintained in the [MPP guide](advanced/mpp.md).
+They are separate from merchant HMAC APIs and do not establish standard MPP
+interoperability.
 
 ## 12. Browser `PaymentHelper`
 
@@ -734,25 +817,90 @@ verification parameters.
 Do not retry a payment broadcast solely because an API call timed out. First
 determine whether a transaction was already submitted.
 
+### Identifiers and retries
+
+| Surface | Identifier | Retry behavior |
+| --- | --- | --- |
+| Ordinary order create | `dappOrderId` | A duplicate is rejected rather than returning the old order. Persist `orderId` and reconcile the original intent after an ambiguous result. |
+| Hosted Checkout create | `clientReferenceId` | A same-merchant duplicate conflicts rather than returning the old `checkoutId` or URL. Persist both from the successful response. |
+| PayKit x402 session | `idempotencyKey` / `idempotency_key` | An existing session can be recovered and polled without automatically paying again. Each session accepts at most **32 additional retry-key aliases** beyond its original key; further new aliases return `429`. The original key and registered aliases remain eligible for valid replay. |
+
+This alias limit applies to QuickPay x402 sessions, not the separate Card-link
+or HMAC Checkout creation contract. Other limits can also return `429`; see
+[QuickPay 429 troubleshooting](goat-flow-faq.md#quickpay-returned-http-429).
+
+The TypeScript server SDK's `recoverExistingOrder` is restricted to exact,
+service-recognized `topup:` retries and is not a general bypass for duplicate
+orders. The public server SDKs do not provide lookup by `dappOrderId` or
+`clientReferenceId`.
+
 ## 14. Runtime capability and version sources
 
-Do not hardcode a global chain/token matrix. Availability is
-deployment- and merchant-specific. Use the merchant/QuickPay response or
-operator configuration.
+Read enabled chains, tokens, fees, limits, and payment methods from trusted
+runtime responses or operator configuration. Package installation alone does
+not enable a merchant or deploy a Core/portal feature.
 
-Published npm versions verified on October 9, 2026 (see
-[publication status](./README.md#npm-packages)):
+As verified on November 26, 2026, the package versions below are published on
+npm and carry the `latest` dist-tag. These examples target those versions. Use
+a lockfile to keep an application's dependency versions stable; existing
+applications do not need to upgrade merely because this documentation was
+corrected. The [release procedure](../RELEASING.md) governs future releases.
+All four packages declare Node.js 18 or later where Node is used.
 
-| Package | Version | Runtime |
-| --- | --- | --- |
-| `goatflow-sdk` | `0.3.0` | Node >= 18 outside browser |
-| `goatflow-sdk-server` | `0.4.0` | Node >= 18 |
-| `goatflow-paykit` | `0.4.0` | Node >= 18 |
-| `goatflow-checkout` | `0.2.0` | Node >= 18 for tooling |
-| Go server SDK | module source | Go 1.25 |
+| Package | Published version | Primary use | Exact install |
+| --- | ---: | --- | --- |
+| [`goatflow-sdk`](../goatx402-sdk/README.md) | [0.3.0](../goatx402-sdk/CHANGELOG.md) | Browser wallet transfers and the GOAT Flow MPP adapter | `npm install goatflow-sdk@0.3.0` |
+| [`goatflow-sdk-server`](../goatx402-sdk-server-ts/README.md) | [0.4.0](../goatx402-sdk-server-ts/CHANGELOG.md) | TypeScript merchant backend and HMAC-authenticated APIs | `npm install goatflow-sdk-server@0.4.0` |
+| [`goatflow-checkout`](../goatx402-checkout/README.md) | [0.2.0](../goatx402-checkout/CHANGELOG.md) | Hosted Checkout browser integration | `npm install goatflow-checkout@0.2.0` |
+| [`goatflow-paykit`](../goatx402-quickpay/README.md) | [0.4.0](../goatx402-quickpay/CHANGELOG.md) | PayKit payer/agent library and CLI | `npm install goatflow-paykit@0.4.0` |
 
-Package manifests, exported types, and release notes are the version source of
-truth.
+### Migration from QuickPay
+
+Replace the `goatflow-quickpay` dependency and import specifiers with
+`goatflow-paykit`. The class name `QuickPayClient` remains available. Use
+`npx goatflow-paykit`; the new package also installs a `goatflow-quickpay`
+executable alias, but `npx goatflow-quickpay` without that local installation
+still resolves the old npm package, not PayKit.
+
+Prefer `PAYKIT_PRIVATE_KEY` and `PAYKIT_RPC[_<chainId>]`; the corresponding
+`QUICKPAY_*` environment variables remain supported. Public merchant links
+accept `/paykit/{merchant_id}` and legacy `/quickpay/{merchant_id}`, with the
+same optional `/agent.md` or `/manifest.json` suffix. The client continues to
+derive API endpoints under `/quickpay/v1` on the trusted origin. Repository
+directory names remain `goatx402-*`.
+
+The TypeScript MPP middleware package name
+`@goatnetwork/mpp-middleware`, the Go modules, contracts, and demo are not
+public npm packages. Follow their package README files for source-based use;
+do not infer Registry availability from a local `package.json`.
+
+### Published SDK boundary
+
+As checked on November 26, 2026, `goatflow-sdk-server@0.4.0` and the public Go
+server SDK source do not expose `cryptoSubmissionProtocol` /
+`CryptoSubmissionProtocol` or a `renewCheckoutSession()` /
+`RenewCheckoutSession()` method. `goatflow-checkout@0.2.0` reports hosted-page
+errors as `checkout_error`; it does not expose a distinct
+`checkout_superseded` reason.
+
+These guides target those public interfaces. Do not copy newer Core-only
+options into these examples or assume that installing the current packages
+enables submission arbitration or checkout renewal. Those capabilities require
+a compatible server SDK, Core, and hosted page verified together. A failed or
+expired attempt is not permission to create a replacement payable session.
+
+The public Go server SDK requires Go 1.25. Its Card fields and merchant token
+mapping limitations are documented in [the Go README](../goatx402-sdk-server-go/README.md#other-operations).
+Polling differences are documented in [Read order status](#5-read-order-status).
+
+The canonical repository is [GOATNetwork/goat-flow](https://github.com/GOATNetwork/goat-flow).
+The former `GOATNetwork/x402` URL redirects to it; published package metadata
+still records the former name. Older generated examples may mention
+`pay.goat.network`; use the [current origins](#1-origins-and-configuration).
+
+These package/source checks do not establish the Core or hosted-page revision
+running on Mainnet or Testnet3. Checkout redirect settings in particular depend
+on the target Core and portal deployment.
 
 ## Appendix A: Operator-provisioned callback compatibility
 

@@ -1,438 +1,247 @@
-# GOAT Flow Developer Quick Start
+# Developer Quick Start
 
-Use this guide to complete a first crypto DIRECT payment with the GOAT Flow
-SDKs. Hosted Checkout can also offer card payment; see the
-[Card Checkout example](./goat-flow-checkout.md#typescript-card-checkout).
+This guide connects an existing application to **hosted crypto checkout on
+Mainnet or Testnet3**, using a TypeScript backend and browser frontend. You will
+create a session for an application order, send the buyer to checkout, and read
+the payment result on your backend.
 
-For deeper details, see the [Integration Guide](./goat-flow-integration.md) and
-[API Reference](./goat-flow-api-reference.md).
+The snippets are integration functions, not a complete web application. Your
+application supplies login, order storage, HTTP routes, and fulfillment.
+For a fixed-price Product without session-creation code, use
+[Product checkout](../goatx402-checkout/README.md#product-checkout).
 
-## Choose the shortest path
+## 1. Prepare the merchant
 
-| Goal | Start here |
-| --- | --- |
-| GOAT Flow-hosted wallet/transfer UI | Hosted Checkout |
-| Custom merchant wallet/transfer UI | Server SDK + `PaymentHelper` |
-| Agent or CLI payment | QuickPay |
-| Paid API route | GOAT Flow MPP profile |
+Choose an environment. The SDKs and integration steps below are the same for both:
 
-All merchant API credentials stay on your backend.
+| Environment | Use | Merchant Portal |
+| --- | --- | --- |
+| Mainnet | Real payments | [Mainnet Merchant Portal](https://flow-merchant.goat.network) |
+| Testnet3 | Integration testing | [Testnet3 Merchant Portal](https://flow-merchant.testnet3.goat.network) |
 
-## Prerequisites
+Merchant approval, receiving configuration, PayKit activation, API credentials,
+and fee balance are specific to each environment. Complete these steps in the
+portal for your selected environment:
 
-- An approved Merchant Account
-- API key and secret for authenticated programmatic flows
-- For Crypto: receiving chain/token configuration, sufficient merchant fee
-  balance, and a payer wallet with the selected ERC-20 token and native gas
-- For Card: merchant fiat eligibility and a connected Stripe account in the
-  target deployment; the payer completes payment on the hosted page
+1. Register and obtain approval for an enabled DIRECT merchant.
+2. Configure a receiving address for an available crypto chain/token. In updated
+   portals, activate PayKit under **Payment Setup → PayKit Settings** (the
+   underlying capability is still named QuickPay in the API). Check the fees
+   and merchant fee-balance requirements.
+3. Create API credentials under **Developer → API & Checkout Settings** and save
+   the secret on your backend. Older portal labels are shown in the Merchant Guide.
 
-QuickPay product links and Hosted Checkout do not expose merchant credentials in
-the browser. Dynamic Hosted Checkout terms are still created by the merchant
-backend.
+The buyer needs the selected token and native gas on the same chain. On GOAT,
+gas is paid in BTC. Get test BTC from the [Testnet3 faucet](https://bridge.testnet3.goat.network/faucet).
+Find each network's RPC and block explorer in [Networks and RPC](https://docs.goat.network/docs/build/networks-rpc).
+Use the tokens enabled for your merchant in the selected environment. Mainnet uses real funds.
+Portal instructions are in the [Merchant Guide](merchant-guide.md).
 
-The runnable examples below use GOAT Testnet3. Move to Mainnet only after the
-same merchant, chain, token, receiving address, and service-fee configuration
-have been verified there; switch every origin and chain ID together.
+## 2. Install and configure
 
-## Install
-
-These examples target the npm versions verified on October 9, 2026. Use a
-lockfile to keep these versions stable; see
-[publication status and the PayKit migration](./README.md#npm-packages).
+Use Node.js 18 or later on the backend. Install in the corresponding applications:
 
 ```bash
-# Authenticated backend API
+# Backend
 npm install goatflow-sdk-server@0.4.0
-
-# Custom browser wallet flow
-npm install goatflow-sdk@0.3.0 ethers@^6.9.0
-
-# Hosted payment window
+# Frontend
 npm install goatflow-checkout@0.2.0
-
-# Agent / CLI payer
-npm install goatflow-paykit@0.4.0
 ```
 
-The TypeScript packages declare Node.js >= 18 where Node is used. The Go SDK
-module currently declares Go 1.25.
+Set backend environment variables using **one** of the following configurations.
+Supply the credentials and merchant ID from that environment.
 
-## Path A: Hosted Checkout
+**Mainnet**
 
-### Fixed product
-
-```ts
-import { GoatCheckout } from 'goatflow-checkout'
-
-const goat = GoatCheckout({
-  origin: 'https://flow-quickpay.testnet3.goat.network',
-})
-
-payButton.addEventListener('click', () => {
-  goat.open({
-    merchant: 'merchant_123',
-    productKey: 'mug',
-    onSuccess(result) {
-      // UX signal only. Fulfill after a trusted webhook/status verification.
-      console.log(result)
-    },
-  })
-})
+```bash
+GOATX402_API_URL=https://flow-api.goat.network
+GOATX402_CHECKOUT_ORIGIN=https://flow-quickpay.goat.network
+GOATX402_API_KEY=your_mainnet_api_key
+GOATX402_API_SECRET=your_mainnet_api_secret
+GOATX402_MERCHANT_ID=your_mainnet_merchant_id
 ```
 
-`open({ merchant, productKey })` opens the Product payment page. Available
-payment methods come from merchant and Product configuration and can include
-Crypto and Card. The Product price remains server-authoritative. PayKit's
-`createFiatCheckoutLink()` or `create-card-checkout` is another way to create a
-Card payment link directly; the payer completes payment on the hosted page.
-
-### Dynamic price
-
-Create the session on your backend using your Testnet3 merchant credentials:
-
-```ts
-import { GoatFlowClient } from 'goatflow-sdk-server'
-
-const client = new GoatFlowClient({
-  baseUrl: 'https://flow-api.testnet3.goat.network',
-  apiKey: process.env.GOATX402_API_KEY!,
-  apiSecret: process.env.GOATX402_API_SECRET!,
-})
-
-const session = await client.createCheckoutSession({
-  checkoutType: 'DIRECT',
-  price: '19.95',
-  clientReferenceId: 'cart_123',
-  lineItems: [{ name: 'Mug', amount: '19.95', quantity: 1 }],
-})
-```
-
-Return `session.checkoutId` to the browser and open it with the Testnet3
-Checkout instance above:
-
-```ts
-goat.open({ checkoutId: session.checkoutId })
-```
-
-This quick start covers the public DIRECT path. Operator-provisioned session
-variants are documented as compatibility reference in the
-[Hosted Checkout guide](./goat-flow-checkout.md) and
-[API Reference](./goat-flow-api-reference.md); do not select them unless the
-target merchant and environment have an explicit deployment contract.
-
-## Path B: Custom order and wallet UI
-
-### 1. Configure the backend
+**Testnet3**
 
 ```bash
 GOATX402_API_URL=https://flow-api.testnet3.goat.network
-GOATX402_API_KEY=your_api_key
-GOATX402_API_SECRET=your_api_secret
+GOATX402_CHECKOUT_ORIGIN=https://flow-quickpay.testnet3.goat.network
+GOATX402_API_KEY=your_testnet_api_key
+GOATX402_API_SECRET=your_testnet_api_secret
+GOATX402_MERCHANT_ID=your_testnet_merchant_id
 ```
 
-Never ship these values in a browser bundle.
+Your backend uses `GOATX402_CHECKOUT_ORIGIN` to validate the session URL before
+sharing it with the browser and to read the session status in step 5.
 
-### 2. Create and map the order
+Keep the API secret out of frontend environment variables and browser bundles.
+Use credentials, products, and checkout origins from the same environment;
+see the [environment table](goat-flow-api-reference.md#1-origins-and-configuration).
 
-The server and browser SDKs intentionally expose different `Order` shapes.
-Map the object explicitly before returning it to the frontend.
+## 3. Create and save a session on the backend
 
 ```ts
-import {
-  GoatFlowClient,
-  type Order as ServerOrder,
-} from 'goatflow-sdk-server'
-import type { Order as ClientOrder } from 'goatflow-sdk'
+import { GoatFlowClient, type CheckoutSession } from 'goatflow-sdk-server'
 
-const client = new GoatFlowClient({
+const flow = new GoatFlowClient({
   baseUrl: process.env.GOATX402_API_URL!,
   apiKey: process.env.GOATX402_API_KEY!,
   apiSecret: process.env.GOATX402_API_SECRET!,
 })
 
-function toClientOrder(order: ServerOrder, fromAddress: string): ClientOrder {
-  return {
-    orderId: order.orderId,
-    flow: order.flow,
-    tokenSymbol: order.tokenSymbol,
-    tokenContract: order.tokenContract,
-    fromAddress,
-    payToAddress: order.payToAddress,
-    chainId: order.fromChainId,
-    amountWei: order.amountWei,
-    expiresAt: order.expiresAt,
-    calldataSignRequest: order.calldataSignRequest,
+const checkoutOrigin = new URL(process.env.GOATX402_CHECKOUT_ORIGIN!)
+
+export function checkoutForBrowser(session: Pick<CheckoutSession, 'checkoutId' | 'url'>) {
+  const url = new URL(session.url)
+  if (url.origin !== checkoutOrigin.origin || url.protocol !== checkoutOrigin.protocol ||
+      url.username || url.password) {
+    throw new Error('Checkout URL does not match the configured checkout origin')
   }
+  return { checkoutId: session.checkoutId, url: url.href }
 }
 
-export async function createOrder(
-  dappOrderId: string,
-  fromAddress: string,
-): Promise<ClientOrder> {
-  const order = await client.createOrder({
-    dappOrderId,
-    chainId: 48816,
-    tokenSymbol: 'USDC',
-    fromAddress,
-    amountWei: '10000000',
+export async function createPaymentSession(
+  paymentIntentId: string,
+  serverPrice: string,
+  saveSession: (session: CheckoutSession) => Promise<void>,
+) {
+  const session = await flow.createCheckoutSession({
+    checkoutType: 'DIRECT',
+    paymentRails: ['crypto'],
+    price: serverPrice, // Decimal price from your server's cart, e.g. '9.99'.
+    clientReferenceId: paymentIntentId,
   })
-
-  return toClientOrder(order, fromAddress)
+  await saveSession(session)
+  return checkoutForBrowser(session)
 }
 ```
 
-Generate `dappOrderId` once for the cart or payment intent, persist it before
-the request, and reuse the same value when reconciling an ambiguous attempt. An
-ordinary duplicate order create is rejected; it does not return the earlier
-order. Persist a successful `orderId`, and after a timeout or duplicate error
-reconcile that original order instead of generating a new ID and potentially
-requesting a second payment. Do not derive the ID from the current timestamp
-inside `createOrder()`.
+Connect this function to your own authenticated route, for example
+`POST /api/orders/:id/checkout`. That route must:
 
-The SDK's `recoverExistingOrder` option is restricted to exact retries of
-deterministic `topup:` orders accepted by the service. It is not a general
-merchant idempotency switch; do not manufacture that prefix to bypass duplicate
-rejection.
+1. Load the application order and check that the signed-in buyer owns it.
+2. Read its price from your database and allocate one stable payment-intent ID.
+   Serialize creation for that intent so double-clicks cannot create two payments.
+3. Call the function once for a new intent. Supply a `saveSession` callback that
+   stores `checkoutId`, `url`, `expiresAt`, environment, and expected price
+   against the order. On a repeat request, use `checkoutForBrowser` on the saved
+   session if it is still payable. Otherwise return the known payment state.
+   If URL validation fails, withhold the payment link and reconcile the saved
+   attempt before authorizing a replacement.
 
-Under the hood, successful order creation returns HTTP `402 Payment Required`.
-The server SDK treats it as success and normalizes the x402 body.
+A duplicate `clientReferenceId` returns a conflict, not the previous session.
+If creation times out or the response is lost, mark the attempt unresolved and
+reconcile it; do not generate a new ID and immediately request payment again.
+The SDK has no lookup by client reference or session-renewal helper.
 
-The server SDK accepts `402` as success only for order creation. An unexpected
-`402` from status, proof, checkout, signature, or cancellation fails closed.
+This example omits return URLs. To add `successUrl` or `cancelUrl`, first
+configure [Checkout return URLs](merchant-guide.md#checkout-return-urls).
 
-### 3. Validate and pay in the browser
+## 4. Open checkout in the browser
 
 ```ts
-import { PaymentHelper, type Order } from 'goatflow-sdk'
-import { ethers } from 'ethers'
+import { GoatCheckout } from 'goatflow-checkout'
 
-export async function payOrder(order: Order): Promise<string> {
-  const provider = new ethers.BrowserProvider(window.ethereum)
-  const signer = await provider.getSigner()
-
-  const network = await provider.getNetwork()
-  if (Number(network.chainId) !== order.chainId) {
-    throw new Error(`Switch wallet to chain ${order.chainId}`)
+export async function startPayment(businessOrderId: string) {
+  const response = await fetch(
+    `/api/orders/${encodeURIComponent(businessOrderId)}/checkout`,
+    { method: 'POST', credentials: 'same-origin' },
+  )
+  if (!response.ok) throw new Error('Could not start checkout')
+  const { checkoutId, url } = await response.json()
+  if (typeof checkoutId !== 'string' || !checkoutId ||
+      typeof url !== 'string' || !url) {
+    throw new Error('Missing checkout session details')
   }
-
-  const payer = await signer.getAddress()
-  if (payer.toLowerCase() !== order.fromAddress.toLowerCase()) {
-    throw new Error('Connected wallet does not match the order payer')
-  }
-
-  if (Math.floor(Date.now() / 1000) >= order.expiresAt) {
-    throw new Error('Order expired')
-  }
-
-  const payment = new PaymentHelper(signer)
-
-  if (order.calldataSignRequest) {
-    throw new Error(
-      'This DIRECT quick start does not handle operator-provisioned callback orders',
-    )
-  }
-
-  const result = await payment.pay(order)
-  if (!result.success || !result.txHash) {
-    throw new Error(result.error ?? 'Payment failed')
-  }
-  return result.txHash
+  const checkout = GoatCheckout({ origin: new URL(url).origin })
+  checkout.redirectToCheckout({ checkoutId })
 }
 ```
 
-`PaymentHelper.pay()` does not classify `TRANSACTION_REPLACED`. If a wallet
-speed-up is reported as failed, reconcile the original/replacement transaction
-and backend order before considering another transfer.
+Call `startPayment` from your Pay button. The route above belongs to your app;
+it is the route implemented in step 3, not a GOAT Flow endpoint. Apply your
+framework's normal authentication and CSRF protection to it.
 
-Callback signing is an operator-provisioned compatibility path, not part of
-this DIRECT quick start. If the target deployment explicitly requires it, use
-the complete field, callback-chain, and signature-submission contract in the
-[Integration Guide](./goat-flow-integration.md#51-typescript-client).
+The hosted page handles wallet connection and payment. A full-page redirect
+works after the asynchronous session request. If using a popup instead,
+`open()` must run synchronously inside a user gesture; see the
+[browser SDK](../goatx402-checkout/README.md).
 
-`PaymentHelper.pay()` checks token balance, submits the ERC-20 transfer, and
-waits for a successful receipt. It returns failures in `PaymentResult`; it does
-not check chain, payer, or expiration.
+## 5. Read the payment result on the backend
 
-### 4. Confirm on the backend
-
-Do not fulfill only because the wallet transaction returned successfully.
-
-```ts
-const orderStatus = await client.getOrderStatus(orderId)
-
-const fulfillable =
-  orderStatus.status === 'PAYMENT_CONFIRMED' ||
-  orderStatus.status === 'INVOICED'
-
-if (fulfillable) {
-  const proof = await client.getOrderProof(orderId)
-  await fulfillOnce(orderId, proof)
-}
-```
-
-Current SDK status values are:
-
-- `CHECKOUT_VERIFIED`
-- `PAYMENT_CONFIRMED`
-- `INVOICED`
-- `FAILED`
-- `EXPIRED`
-- `CANCELLED`
-
-Server SDK order waiters treat `PAYMENT_CONFIRMED` and `INVOICED` as successful
-terminal states. Core can advance a DIRECT order from `PAYMENT_CONFIRMED` to
-`INVOICED` in one watcher transaction, so a poller may observe only
-`INVOICED`. Before fulfillment, still validate the authenticated order's
-merchant context, chain, token, amount, recipient, and transaction identity.
-
-Cancel an abandoned order only while it remains `CHECKOUT_VERIFIED`:
+Load the checkout ID and environment saved in step 3. Use the matching backend
+configuration for that environment and the saved ID, not an ID supplied by the
+browser. The session's status endpoint supplies the linked `order_id` after
+crypto binding. Then read that order through the authenticated server SDK:
 
 ```ts
-await client.cancelOrder(orderId)
-```
-
-## Path C: QuickPay / agent
-
-PayKit accepts canonical same-origin `/paykit/{merchant_id}` links and legacy
-`/quickpay/{merchant_id}` links, including their `/agent.md` and
-`/manifest.json` forms:
-
-```bash
-npx goatflow-paykit inspect \
-  https://flow-quickpay.testnet3.goat.network/paykit/merchant_123/agent.md
-
-npx goatflow-paykit pay-product \
-  https://flow-quickpay.testnet3.goat.network/paykit/merchant_123/agent.md \
-  --product mug \
-  --token USDC \
-  --chain 48816
-```
-
-The library derives the manifest and session endpoints from the trusted link
-origin; it rejects remote `http` URLs and cross-origin endpoint substitution.
-
-QuickPay sessions have their own terminal set: `PAYMENT_CONFIRMED`, `EXPIRED`,
-`FAILED`, and `CANCELLED`. Polling is bounded by `pollTimeoutMs`, retains a
-known transaction hash across transient failures, and performs five bounded
-grace polls when a known transaction is reported `EXPIRED`. Reconcile by
-session ID and transaction hash instead of rebroadcasting after an ambiguous
-post-broadcast failure.
-
-Library options are camelCase. For example, `payX402()` accepts `amount`,
-`chainId`, `tokenSymbol`/`tokenContract`, `memo`, and `idempotencyKey`; it
-derives the wire `merchant_id` and `payer_addr`. Do not pass raw API fields such
-as `amount_wei`, `merchant_id`, or `payer_addr` to the library methods.
-
-## Path D: GOAT Flow MPP profile
-
-[MPP](https://mpp.dev/overview) is an independent open protocol. The example
-below uses the current GOAT Flow adapter: deployment-specific JSON
-challenge/verify endpoints, a direct ERC-20 transfer, and a GOAT-specific signed
-receipt. It is not generic MPP client code, and no interoperability result with
-the official MPP SDKs is currently published.
-
-```ts
-import { MPPClient, MPPError } from 'goatflow-sdk'
-
-const mpp = new MPPClient({
-  coreUrl: 'https://flow-api.testnet3.goat.network', // no trailing slash
-  signer,
-})
-
-async function payForRoute() {
-  try {
-    return await mpp.pay({
-      merchantId: 'merchant_123',
-      routeCanonical: 'GET:api:data',
-    })
-  } catch (error) {
-    if (error instanceof MPPError && error.recoverable) {
-      // Resume verification of the already-broadcast transfer.
-      return mpp.verifyChallenge(error.recoverable)
-    }
-    throw error
+// Same backend module as step 3. This example is for the crypto rail only.
+export async function readCryptoPayment(checkoutId: string) {
+  const statusUrl = new URL(
+    `/checkout/v1/sessions/${encodeURIComponent(checkoutId)}/status`,
+    checkoutOrigin,
+  )
+  const response = await fetch(
+    statusUrl,
+    { signal: AbortSignal.timeout(15_000), redirect: 'error' },
+  )
+  if (!response.ok) throw new Error(`Checkout status failed: ${response.status}`)
+  const session: unknown = await response.json()
+  if (!session || typeof session !== 'object' || !('status' in session) ||
+      typeof session.status !== 'string' || !session.status) {
+    throw new Error('Invalid checkout status')
   }
-}
+  if (!('order_id' in session)) return { checkoutStatus: session.status }
+  if (typeof session.order_id !== 'string' || !session.order_id) {
+    throw new Error('Invalid checkout order ID')
+  }
 
-const result = await payForRoute()
-await fetch('/api/data', {
-  headers: { 'Payment-Receipt': result.receiptHeader },
-})
+  const order = await flow.getOrderStatus(session.order_id)
+  if (order.merchantId !== process.env.GOATX402_MERCHANT_ID ||
+      order.orderId !== session.order_id) {
+    throw new Error('Payment does not match this merchant session')
+  }
+  const paid = order.status === 'PAYMENT_CONFIRMED' || order.status === 'INVOICED'
+  const proof = paid ? await flow.getOrderProof(order.orderId) : undefined
+  return { checkoutStatus: session.status, order, proof }
+}
 ```
 
-This is the standalone GOAT Flow MPP adapter, so `coreUrl` is the Core/API
-origin configured for that deployment. QuickPay `pay-mpp` instead derives
-`coreUrl` from the trusted QuickPay link origin so discovery, challenge, and
-verify remain same-origin.
+The raw status call is an HTTP endpoint, not an SDK method. Its response and
+deployment boundary are documented in
+[Checkout status](goat-flow-api-reference.md#read-checkout-status).
+Treat the opaque checkout ID as a bearer capability and keep it out of logs.
 
-For this profile's challenge endpoint, success is HTTP `402`. Verify success is
-HTTP `200` with its signed `Payment-Receipt` extension. A browser integration
-works only when the Core origin
-allows the DApp origin and exposes that response header, and the protected
-resource allows the `Payment-Receipt` request header. Otherwise run the buyer
-flow server-side. Once returned, the challenge is authoritative for payment
-amount, chain, token, recipient, expiry, MAC, and pricing version.
+Call this from a backend job or your application's authenticated order-status
+route. An absent order means there is no crypto order to confirm yet; a failed
+request means the result is unknown. Neither means the buyer should pay again.
 
-## Test environment
+Before fulfillment, match the merchant, session, chain, token contract, and
+transaction to the saved purchase. Use the token decimals and expected receiving
+address from your trusted merchant configuration for that chain and token.
+Compare the expected amount in base units with `proof.payload.amount_wei`
+and the expected recipient with `proof.payload.to_addr`.
+The proof's `signature` is a digest, not a signed attestation; see
+[Read proof](goat-flow-api-reference.md#6-read-proof).
 
-| Resource | GOAT Testnet3 | GOAT Mainnet |
-| --- | --- | --- |
-| Chain ID | `48816` | `2345` |
-| RPC | `https://rpc.testnet3.goat.network` | `https://rpc.goat.network` |
-| Explorer | `https://explorer.testnet3.goat.network` | `https://explorer.goat.network` |
-| Merchant Portal | `https://flow-merchant.testnet3.goat.network` | `https://flow-merchant.goat.network` |
-| Admin Portal (operators only) | `https://flow-admin.testnet3.goat.network` | `https://flow-admin.goat.network` |
-| Flow API / standalone MPP Core | `https://flow-api.testnet3.goat.network` | `https://flow-api.goat.network` |
-| QuickPay / Checkout and same-origin public API | `https://flow-quickpay.testnet3.goat.network` | `https://flow-quickpay.goat.network` |
-| GOAT x402 network identifier | `eip155:48816` | `eip155:2345` |
+Only then mark the business order paid and fulfill it atomically, once.
+`FAILED`, `EXPIRED`, and `CANCELLED` do not authorize fulfillment. A browser
+callback or return URL updates the UI only. If using webhooks, implement the
+deployment-confirmed [verification contract](merchant-guide.md#9-webhook-configuration).
 
-GOAT native gas is BTC. Testnet3 gas is available from the
-[faucet](https://bridge.testnet3.goat.network/faucet). Token contracts and
-enabled transfer capabilities remain deployment/merchant-specific. The npm
-package version does not choose an environment: keep the API, Checkout origin,
-merchant credentials, products, and chain configuration in the same
-deployment. Stripe test/live mode is independent of the chain ID; confirm it
-with the deployment operator before entering card details or assuming real
-funds are involved.
+## 6. Verify the complete path
 
-## Troubleshooting
+- Complete a payment in your selected environment and find the same order in
+  that environment's Merchant Portal. Mainnet payments use real funds.
+- Confirm your backend matches the payment terms and fulfills once.
+- Refresh/retry the status read and replay a notification: fulfillment stays once.
+- Use Testnet3 to test cancellation, expiry, and a lost API response without
+  requesting a second payment.
+- Before accepting Mainnet payments, complete the
+  [launch checks](merchant-guide.md#launch-checks) with Mainnet merchant setup,
+  credentials, receiving configuration, and fee balance.
 
-### Order creation
-
-- Confirm key, timestamp, nonce, and signature inputs.
-- Confirm merchant fee balance.
-- Confirm the chain/token is enabled for this merchant.
-- Treat HTTP `402` as success only on documented challenge endpoints.
-- If status/proof/checkout/signature/cancel returns `402`, the Server SDK fails
-  closed; treat it as an endpoint or deployment mismatch.
-
-### Wallet transfer
-
-- Confirm `chainId`, `fromAddress`, and `expiresAt` before calling `pay()`.
-- Confirm the token balance is at least `amountWei`.
-- Read `PaymentResult.error`; `pay()` normally does not throw its payment error.
-
-### Status does not advance
-
-- Confirm token contract, recipient, amount, chain, and payer match the order.
-- Allow for the deployment's confirmation/finality requirement.
-- For Server SDK order polling, `INVOICED` is a successful terminal state.
-- For QuickPay session polling, use its separate terminal set; it does not
-  include `INVOICED`.
-
-### GOAT Flow MPP transfer broadcast but verify failed
-
-- If `MPPError.recoverable` exists, call `verifyChallenge()` with it.
-- Do not call `pay()` again for the same already-broadcast payment.
-- Confirm Core CORS allows the DApp origin and exposes `Payment-Receipt`, and
-  the protected resource allows that origin and request header.
-
-## Related documents
-
-- [Integration Guide](./goat-flow-integration.md)
-- [API Reference](./goat-flow-api-reference.md)
-- [Hosted Checkout](./goat-flow-checkout.md)
-- [GOAT Flow MPP Integration](./mpp.md)
-- [Merchant Guide](./merchant-guide.md)
-- [Onboarding Guide](./goat-flow-onboarding-guide.md)
+For Card, use the [Card session example](goat-flow-api-reference.md#9-hosted-checkout-sessions)
+and the deployment's trusted Card confirmation contract; the crypto proof flow
+above does not apply. For Go, use the [Go SDK guide](../goatx402-sdk-server-go/README.md).
+Other integrations are listed in the [documentation index](README.md).

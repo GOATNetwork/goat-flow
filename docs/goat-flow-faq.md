@@ -1,477 +1,114 @@
-# GOAT Flow FAQ
+# Troubleshooting
 
-This FAQ covers public SDK and API behavior and identifies settings that depend
-on the active GOAT Flow environment.
+Start with the symptom below. For the normal flow, use the
+[Developer Quick Start](goat-flow-developer-quickstart.md).
 
----
+## Order creation returned HTTP 402
 
-## Product and Payments
+For `POST /api/v1/orders`, `402` is the successful payment challenge; both
+server SDKs normalize it. A `402` from status, proof, cancellation, or session
+creation is an error. See the [endpoint table](goat-flow-api-reference.md#3-merchant-endpoint-summary).
 
-### What is GOAT Flow?
+## The merchant API returned HTTP 401
 
-GOAT Flow provides commerce and transfer-verification software for merchants,
-applications, and agents using the x402 protocol, including:
+1. Check that the API URL, API key, and secret belong to the same environment.
+2. Synchronize the backend clock and send the current Unix timestamp in seconds.
+3. Generate a fresh nonce and signature for each request, including retries.
 
-- browser and server SDKs
-- hosted checkout with Crypto and, for eligible merchants, Card
-- QuickPay buyer/agent tooling
-- MPP buyer support and merchant middleware
+The server SDK signs requests for you. For a custom HTTP client, compare the
+values you sign with the fields you send using the [HMAC rules](goat-flow-api-reference.md#2-hmac-authentication).
+Keep the secret out of logs. Before retrying a create request with an unknown
+outcome, [reconcile the original attempt](#a-duplicate-id-returned-a-conflict).
 
-### What is DIRECT?
+## Checkout creation returned 400 or a return URL was rejected
 
-For `ERC20_DIRECT`, the x402 challenge's `payTo` address is the merchant
-receiving address. The browser SDK executes a standard ERC-20 transfer to that
-address.
+Check the response code/body, then the session fields and merchant eligibility.
+If you supplied `successUrl` or `cancelUrl`, configure the merchant's redirect
+allowlist first. An empty list rejects both; a path prefix must match itself or
+a child path. See [Checkout redirects](merchant-guide.md#checkout-return-urls).
 
-`DIRECT` is also the current public Hosted Checkout subsystem identifier; it is
-not synonymous with Crypto-only. A server-created `DIRECT` session can offer
-`crypto`, `fiat`, or both through `paymentRails` when the deployment and
-merchant/product configuration allow it.
+## A duplicate ID returned a conflict
 
-### Does a Card payer need a crypto wallet or gas?
+Ordinary order creation and hosted-session creation do not replay the original
+result. Use the saved order/session ID to reconcile. A timeout does not prove
+creation failed; do not allocate another ID merely to bypass the conflict.
+PayKit's idempotency keys have a different contract. See
+[Identifiers and retries](goat-flow-api-reference.md#identifiers-and-retries).
 
-No. The payer completes Card on the hosted page. Card availability depends on
-the deployment, merchant eligibility, product configuration, supported
-currency, and connected Stripe-account status. Stripe test/live mode is
-separate from the GOAT chain ID.
+## QuickPay returned HTTP 429
 
----
+For x402 session creation, inspect the response error. If it says
+`session retry key limit reached; reuse an existing idempotency key`, stop
+generating new keys and reuse the original key or an already registered alias
+for the same payment intent. The session permits 32 additional aliases beyond
+its original key; see [Identifiers and retries](goat-flow-api-reference.md#identifiers-and-retries).
 
-## Chains, Tokens, Amounts, and Fees
+Other `429` responses can indicate request-rate limits, too many open sessions,
+or a merchant's daily/session-capacity limit. Follow the reported limit instead
+of assuming every `429` is an alias-limit error or creating another payment.
 
-### Which chains are supported?
+## The checkout window did not open
 
-There is no authoritative global chain list in the public SDK types.
+Popup and tab modes need `open()` synchronously inside the click handler.
+Calling it after awaiting session creation can trigger a popup blocker. Use
+`redirectToCheckout()` for an asynchronous flow. If a strict COOP policy breaks
+the opener channel, use redirect mode. See the [Checkout SDK](../goatx402-checkout/README.md).
 
-- For authenticated orders, use the returned x402 `accepts[]` entries.
-- For QuickPay, use `rails.x402.tokens` in the merchant manifest.
-- For the current GOAT Flow MPP profile, use `rails.mpp.routes`.
-- The public `getMerchant(...)` result exposes configured merchant token
-  entries.
+## Checkout shows success but the order is not fulfilled
 
-Do not hardcode a chain table from narrative documentation.
+A browser success callback or redirect is a UI signal. On your backend, use the
+saved session to resolve the payment, verify its trusted status and expected
+terms, and fulfill once. Crypto orders may advance directly to `INVOICED`
+between polls. Card uses its own confirmation contract and need not have a
+transaction hash. See [confirmation](goat-flow-developer-quickstart.md#5-read-the-payment-result-on-the-backend).
 
-### Which tokens are supported?
+## The wallet sent a transaction but confirmation timed out
 
-Token support is merchant and environment configuration. USDC and USDT appear
-as examples in types and tests, but applications must use the token contract,
-symbol, decimals, and limits returned at runtime.
+Retain the transaction hash and original payment intent. Check the chain
+receipt and trusted order/session status before any new transfer. A replaced
+transaction or delayed watcher can require reconciliation.
+`PaymentHelper.pay()` does not classify `TRANSACTION_REPLACED`. For MPP, resume
+[verification with the saved challenge and hash](advanced/mpp.md#7-recovery--never-pay-twice).
 
-### Does QuickPay enforce minimum and maximum amounts?
+## Go polling timed out, even with invalid credentials
 
-The QuickPay manifest includes `min_amount_wei` and optional
-`max_amount_wei` for each x402 token entry. The QuickPay client validates those
-values and preflights a fresh custom-amount payment against them.
+The current Go waiter retries every status-read error, including `401`, `403`,
+and `404`. Use explicit `GetOrderStatus` polling when those errors must surface
+immediately. Pass a context deadline to bound in-flight requests; the waiter's
+timeout alone is checked at interval ticks. See [polling behavior](goat-flow-api-reference.md#5-read-order-status).
 
-Products are priced with a positive decimal `price`; the selected token's
-decimals determine the base-unit amount.
+## Go returned an empty supported-token list
 
-### Is there a universal minimum such as USD 0.01?
+The current Go type expects `supported_tokens`; Core can return `wallets[]`.
+An empty `SupportedTokens` slice does not establish that no tokens are configured.
+Check the wire response or decode that field separately. See
+[Read merchant](goat-flow-api-reference.md#8-read-merchant).
 
-No universal minimum is defined. Use the runtime token bounds and the active
-service policy.
+## Card fields, renewal, or submission protocol options are missing
 
-### What service fees are configured for a deployment?
+Backend features and installed SDK capabilities are separate. The public Go
+helper lacks Card fields; current public server SDKs lack protocol 1 and session
+renewal. Do not copy Core-only options into a published SDK example. Check the
+[compatibility baseline](goat-flow-api-reference.md#14-runtime-capability-and-version-sources).
 
-The public packages do not export a stable merchant service-fee schedule or
-fee-balance type. The fee balance is separate from buyer-to-merchant transfers;
-it must not be described as a balance of customer funds. Fees, top-up
-requirements, reservation/refund rules, and insufficient-fee responses must be
-confirmed with the deployed portal and API environment.
+## A chain, token, or payment method is unavailable
 
-Do not encode fixed values or environment-specific HTTP responses unless the
-active API documents them.
+Read the target merchant's current portal/discovery configuration. Testnet3
+and Mainnet have separate accounts, credentials, receiving addresses, fees, and
+capabilities. Crypto hosted sessions require QuickPay; authenticated Card-only
+sessions instead require the deployment's fiat/Connect enablement. Public
+PayKit Card-link creation also requires QuickPay. See
+[session requirements](goat-flow-api-reference.md#9-hosted-checkout-sessions).
 
-### Who pays gas?
+## Which webhook event and signature should I implement?
 
-For DIRECT and the current GOAT Flow MPP profile, the buyer wallet broadcasts
-the ERC-20 transfer and normally pays the chain's native gas. This is a property
-of the GOAT Flow adapter, not MPP generally. A separate AA wallet or Paymaster
-may sponsor gas, but that is not implemented by the GOAT Flow client SDK itself.
+Use the contract confirmed for your deployment, with a redacted real delivery
+fixture. The public SDKs do not provide a deployment-approved production
+webhook schema. Do not invent an event ID or infer signature/replay rules from
+an example. Follow [webhook setup and verification](merchant-guide.md#9-webhook-configuration).
 
----
+## Getting help
 
-## Orders and HTTP Semantics
-
-### Why does order creation return HTTP 402?
-
-HTTP 402 is the expected success path for `POST /api/v1/orders`. The response is
-an x402 payment challenge with `x402Version`, `accepts[]`, order metadata, and
-GOAT-specific extensions.
-
-The server SDKs treat HTTP 402 as success only for order creation. An
-unexpected 402 from status, proof, checkout, signature, or cancellation fails
-closed.
-
-### What payment fields are authoritative?
-
-Use the returned payment option:
-
-- `scheme`
-- `network`
-- `amount`
-- `asset`
-- `payTo`
-- `maxTimeoutSeconds`
-
-Do not reconstruct these terms from a symbol-only or chain-only configuration.
-
-### What order statuses exist in the SDK?
-
-The public order status union contains:
-
-- `CHECKOUT_VERIFIED`
-- `PAYMENT_CONFIRMED`
-- `INVOICED`
-- `FAILED`
-- `EXPIRED`
-- `CANCELLED`
-
-The server SDK's `waitForConfirmation(...)` returns on successful
-`PAYMENT_CONFIRMED` or `INVOICED`, and on `FAILED`, `EXPIRED`, or `CANCELLED`.
-Core can move a DIRECT order from `PAYMENT_CONFIRMED` to `INVOICED` in one
-watcher transaction, so a poller may observe only `INVOICED`.
-
-### Can an order be canceled?
-
-The server SDK exposes cancellation for an order in `CHECKOUT_VERIFIED`.
-Whether cancellation restores a fee balance or other reservation is a
-server-side policy and should not be promised solely from the client method.
-
-An already-broadcast on-chain token transfer cannot be canceled by the SDK.
-
-### How should API errors be handled?
-
-TypeScript API failures are surfaced as the runtime-exported `GoatFlowError`
-with:
-
-- `message`
-- optional `code`
-- optional HTTP `status`
-
-Authenticated-request failures also preserve `responseBody`.
-`instanceof GoatFlowError` is supported. Branch on stable status/code fields
-when the deployed API documents them; avoid parsing free-form error messages as
-a long-term contract.
-
----
-
-## Proof and Fulfillment
-
-### How is payment confirmed?
-
-The public server SDK polls `GET /api/v1/orders/:orderId` and returns the
-configured order status, transaction hash, and confirmation time when present.
-
-The internal listener architecture, RPC failover policy, and exact confirmation
-thresholds are not exported by these packages. Treat them as deployment
-configuration.
-
-### Is a browser checkout success callback proof of payment?
-
-No. Checkout callbacks are explicitly documented as UX signals. A merchant must
-use a trusted backend order/session status or an authenticated webhook before
-fulfillment.
-
-### Which webhook event should I use?
-
-The public SDKs do not export one canonical webhook event union. Confirm the
-event name, payload, signature verification, and retry policy against the active
-webhook contract.
-
-Do not build fulfillment around an event name copied only from a narrative
-example.
-
-### Is there an order proof API?
-
-Yes. `getOrderProof(orderId)` returns a server-issued payment record containing
-the order ID, transaction hash, log index, payer, recipient, amount, source
-chain, and status.
-
-Its historical `signature` field is not a signature or attestation. It is
-Keccak256 over `order_id`, `tx_hash`, `log_index`, `from_addr`, `to_addr`,
-`amount_wei`, and `from_chain_id`, concatenated in that exact order without
-separators; it does not cover `status`. Verify the transaction hash on-chain
-when independent proof is required.
-
----
-
-## QuickPay and Products
-
-### What is the QuickPay discovery surface?
-
-A buyer or agent starts from one of these same-origin paths:
-
-- `/paykit/<merchant_id>`
-- `/paykit/<merchant_id>/agent.md`
-- `/paykit/<merchant_id>/manifest.json`
-
-Legacy `/quickpay/<merchant_id>` links with the same optional suffixes remain
-accepted. The client accepts only those canonical path shapes, requires HTTPS
-except for loopback development, and derives API endpoints from the trusted
-origin. The current API routes remain under `/quickpay/v1`.
-
-### What does the manifest contain?
-
-Schema `goatx402.quickpay.v1` contains merchant identity plus:
-
-- `rails.x402.enabled`
-- custom-amount and memo flags
-- x402 token entries and amount bounds
-- optional Crypto Products
-- `rails.fiat.enabled`, Card custom-amount and memo flags,
-  `human_action_required`, currency, minor-unit exponent, and Card Products
-- `rails.mpp.enabled`
-- MPP route entries
-
-The client validates the trusted origin, merchant identity, and selected token,
-Product, Card currency terms, or MPP route before acting. Non-array x402 token
-and MPP route lists are currently normalized to empty lists, while malformed
-Crypto or Card Product lists fail closed. For a fresh session,
-`payX402()` and `createFiatCheckoutLink()` reject an explicitly disabled
-`custom_amount` flag. The returned session/challenge and deployed service remain
-authoritative for the final terms.
-
-### How do QuickPay Products work?
-
-A Product contains:
-
-- `product_key`
-- `name`
-- optional description and HTTPS image URL
-- token-agnostic decimal `price`
-
-A manifest lists a Product separately under each rail that can sell it. On the
-Crypto rail, the buyer chooses an advertised chain/token; for a fresh purchase,
-the client converts the price using token decimals and refuses to broadcast
-unless the session's x402 terms match the expected chain, token, amount, and
-recipient shape. On the Card rail, PayKit checks Product availability and the
-manifest currency, then creates a hosted link for a human payer; the server pins
-the Card quote.
-
-### Can a fixed-price Product be opened without a merchant backend?
-
-Yes. The Checkout SDK opens the Product payment page with:
-
-```ts
-goat.open({ merchant, productKey })
-```
-
-The browser URL contains the merchant and product key, not the product price.
-The product must already exist in the merchant's QuickPay configuration. The
-page can offer Crypto, Card, or both according to the merchant and Product
-configuration. PayKit's `createFiatCheckoutLink()` or `create-card-checkout` is
-another way to create a Card payment link directly. The payer completes payment
-on the hosted page.
-
-### What is a dynamic Hosted Checkout Session?
-
-The merchant backend calls `createCheckoutSession(...)` with
-`checkoutType: "DIRECT"` and server-authoritative terms. It receives an opaque
-`checkoutId`, which the browser opens with:
-
-```ts
-goat.open({ checkoutId })
-```
-
-The authenticated API key determines the merchant; the request body does not.
-
-### Do order, Checkout, and PayKit identifiers retry the same way?
-
-No. Keep their contracts separate:
-
-| Surface | Identifier | Retry behavior |
-| --- | --- | --- |
-| Ordinary order create | `dappOrderId` | A duplicate is rejected rather than returning the old order. Persist `orderId` and reconcile the original intent after an ambiguous result. |
-| Hosted Checkout create | `clientReferenceId` | A same-merchant duplicate conflicts rather than returning the old `checkoutId` or URL. Persist both from the successful response. |
-| PayKit session | `idempotencyKey` / `idempotency_key` | An existing session can be recovered and polled; a reused unpaid session is not automatically paid again. |
-
-The server SDK's `recoverExistingOrder` is restricted to exact,
-service-recognized `topup:` retries and is not a general bypass for duplicate
-orders. The public server SDKs do not provide lookup by `dappOrderId` or
-`clientReferenceId`.
-
-### What is custom QuickPay?
-
-Custom QuickPay lets the browser or CLI supply an amount. It is appropriate for
-tips, donations, or other cases where the merchant will reconcile the actual
-payment.
-
-It is not appropriate as the sole price authority for automatically fulfilled
-goods.
-
-### How does QuickPay reduce duplicate payments?
-
-QuickPay supports `idempotency_key`. The client recognizes reused sessions and
-does not rebroadcast an unpaid reused session unless the caller explicitly
-forces it. For Products, an explicit idempotency key also supports recovery when
-the current manifest has changed.
-
-Status polling applies `pollTimeoutMs` as a hard cap and preserves a known
-transaction hash across transient failures. A known transaction reported
-`EXPIRED` receives five bounded grace polls for a possible late confirmation.
-Reconcile by session ID and transaction hash instead of rebroadcasting after an
-ambiguous post-broadcast failure.
-
----
-
-## Machine Payments Protocol
-
-### Is MPP a GOAT Flow protocol?
-
-No. [Machine Payments Protocol (MPP)](https://mpp.dev/overview) is an
-independent open protocol with a standard Challenge/Credential/Receipt HTTP
-exchange and extensible payment methods. GOAT Flow currently implements a
-deployment-specific adapter with JSON challenge/verify endpoints, a direct
-ERC-20 transfer, and a signed three-segment receipt extension.
-
-No interoperability result with official MPP SDKs is currently published. Do
-not treat `MPPClient` or the middleware as a generic or official MPP
-implementation without an adapter and conformance testing.
-
-### What does a buyer using the GOAT Flow MPP profile need?
-
-A buyer using the current GOAT Flow profile needs:
-
-- a trusted QuickPay URL
-- an EVM wallet signer
-- an RPC connection for the route's chain
-- the exact `route_canonical` advertised in the manifest
-
-The buyer does not use the merchant API key or secret.
-
-### What is the current GOAT Flow MPP integration flow?
-
-1. `POST /mpp/v1/challenge`
-2. transfer the challenged ERC-20 amount to the challenged recipient
-3. `POST /mpp/v1/verify`
-4. receive the signed `Payment-Receipt` header
-5. call the protected merchant route with that header
-
-### What does the GOAT Flow receipt extension protect?
-
-The middleware verifies:
-
-- signature and configured algorithm
-- merchant audience
-- canonical route binding
-- expiry
-- optional receipt-ID single-use consumption
-
-A successful receipt is attached to the Express or Fastify request, or to the
-Go request context.
-
-### What are the merchant middleware error semantics?
-
-The TypeScript middleware returns stable JSON reason codes:
-
-| Condition | HTTP status | `error` |
-| --- | ---: | --- |
-| Missing receipt | 401 | `payment_required` |
-| Malformed receipt | 401 | `invalid_payment_receipt` |
-| Invalid signature | 401 | `invalid_signature` |
-| Wrong merchant | 401 | `audience_mismatch` |
-| Wrong route | 402 | `route_mismatch` |
-| Expired receipt | 402 | `receipt_expired` |
-| Already consumed | 401 | `receipt_already_consumed` |
-| Receipt store unavailable | 503 | `receipt_store_unavailable` |
-
-Unexpected verifier throws fail closed with HTTP 500 `internal_error` in the
-Express adapter.
-
-### How does GOAT Flow profile verification polling behave?
-
-The browser SDK:
-
-- retries HTTP 202 and 429 using `Retry-After`
-- retries network failures and 5xx responses with bounded backoff
-- treats other 4xx responses as terminal
-- requires a `Payment-Receipt` header on HTTP 200
-- returns stable `MPPError.code` values
-
-### What if verification fails after the transfer was broadcast?
-
-Do not call `pay()` again blindly. The SDK attaches a `recoverable` payload to
-post-broadcast `MPPError` instances so the caller can run
-`verifyChallenge(...)` for the existing transaction.
-
-The QuickPay CLI also avoids reporting success unless it has both a transaction
-hash and the signed receipt header.
-
----
-
-## Credentials and Account Security
-
-### Where should merchant API credentials live?
-
-Only on the merchant backend. The browser SDK must receive normalized order
-data, not the API key or secret.
-
-### How are authenticated SDK requests signed?
-
-The TypeScript server SDK signs parameters with HMAC-SHA256 and sends:
-
-- `X-API-Key`
-- `X-Timestamp`
-- unique `X-Nonce`
-- `X-Sign`
-
-The server's exact timestamp window, nonce retention, and rejection codes are
-not exported by the public client package; confirm them with the deployed API
-contract.
-
-### What is the registration and approval workflow?
-
-Merchant registration, approval, API-key issuance, and rejection policy are
-managed through the Merchant Portal. Follow the portal and
-[Merchant Guide](./merchant-guide.md) for the target environment.
-
-### How do password recovery and 2FA work?
-
-Password changes, account recovery, 2FA enrollment and reset, session lifetime,
-and administrator permissions are managed through the active portal. See the
-[Merchant Guide](./merchant-guide.md#4-approval-login-and-account-security), and
-contact [Support@goat.network](mailto:Support@goat.network) when self-service
-recovery is unavailable.
-
-### Which wallets are supported?
-
-The browser SDK accepts an `ethers.Signer` and executes standard ERC-20
-operations. No tested vendor-by-vendor wallet compatibility matrix is currently
-published.
-
-WalletConnect, embedded wallets, account-abstraction wallets, and Paymasters may
-work when they provide compatible signer/provider behavior, but they are not a
-GOAT Flow SDK guarantee.
-
----
-
-## Operations, Compliance, and Support
-
-### Where are KYC, AML, tax, and privacy requirements defined?
-
-These technical documents do not provide a merchant compliance determination.
-Merchants must confirm jurisdiction-specific requirements, data handling,
-reporting, and sanctions controls separately.
-
-### What should be confirmed before production?
-
-- merchant approval and enabled payment rails
-- for Crypto, receiving addresses plus live chain/token entries and limits
-- for Card, merchant/provider eligibility, supported currency, product rail
-  settings, and provider test/live mode
-- fee and top-up policy
-- API base URL and checkout origin
-- webhook contract and signature validation
-- MPP receipt algorithm/key and shared replay store for multi-replica services
-- fulfillment behavior for every terminal status
-
-### Where can I get support?
-
-Contact [Support@goat.network](mailto:Support@goat.network).
-
-## Related
-
-- [Documentation hub](./README.md)
-- [Developer Quick Start](./goat-flow-developer-quickstart.md)
-- [Merchant Guide](./merchant-guide.md)
+Contact [Support@goat.network](mailto:Support@goat.network) with the environment,
+SDK version, operation, timestamp, and sanitized error code/status. Keep API
+secrets, webhook secrets, wallet keys, and opaque checkout handles out of tickets.

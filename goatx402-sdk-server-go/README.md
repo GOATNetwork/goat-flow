@@ -16,12 +16,14 @@ github.com/goatnetwork/goatflow-sdk-server
 
 This Go module is source-only in this repository, is outside the npm release
 runbook, and is not published from a standalone source repository. Clone
-`GOATNetwork/x402`, then bind the logical module path to the checked-in
-directory:
+[`GOATNetwork/goat-flow`](https://github.com/GOATNetwork/goat-flow), then bind
+the logical module path to the checked-in directory. The commands below assume
+that the clone is a sibling directory named `goat-flow`; adjust the local path
+if your directory layout differs. Pin the source revision used by your app.
 
 ```bash
 go mod edit -require=github.com/goatnetwork/goatflow-sdk-server@v0.0.0
-go mod edit -replace=github.com/goatnetwork/goatflow-sdk-server=../x402/goatx402-sdk-server-go
+go mod edit -replace=github.com/goatnetwork/goatflow-sdk-server=../goat-flow/goatx402-sdk-server-go
 ```
 
 Add the import shown below, then run `go mod tidy`. The checked-in module
@@ -79,6 +81,10 @@ cannot currently create that Card request. Use
 `goatflow-sdk-server@0.4.0` or a deployment-confirmed direct HTTP integration
 until a later Go source version adds those fields.
 
+Before using `SuccessURL` or `CancelURL`, configure the merchant's
+[Checkout redirect allowlist](../docs/merchant-guide.md#checkout-return-urls).
+An empty list rejects new sessions containing a return URL.
+
 ```go
 session, err := client.CreateCheckoutSession(ctx, goatflow.CreateCheckoutSessionParams{
     CheckoutType: "DIRECT",
@@ -132,13 +138,20 @@ the target wire response or decode that field separately.
 and on `FAILED`, `EXPIRED`, or `CANCELLED`. Core can move a DIRECT order from
 `PAYMENT_CONFIRMED` to `INVOICED` in one watcher transaction, so a poller may
 observe only `INVOICED`. The helper waits one interval before its first read and
-suppresses transient `GetOrderStatus` errors until a later poll, timeout, or
-context cancellation.
+suppresses **all** `GetOrderStatus` errors, including `401`, `403`, and `404`,
+until a later successful poll, timeout, or context cancellation. An invalid API
+key can therefore surface as a polling timeout rather than the original
+authentication error. Use explicit `GetOrderStatus` polling when the
+application must classify errors immediately.
 
 Every request uses the configured HTTP client's deadline; the default client
-timeout is 30 seconds. HTTP `402` is accepted as the expected response only for
-order creation. Checkout, status, proof, signature, and cancellation fail
-closed on an unexpected `402`.
+timeout is 30 seconds. The waiter's `timeout` argument is checked at interval
+ticks and does not shorten an in-flight request, so it is not a hard elapsed
+time limit. Pass a context with its own deadline when a bounded wait is
+required; this bounds the request but does not change the error-retry policy.
+HTTP `402` is accepted as the expected response only for order creation.
+Checkout, status, proof, signature, and cancellation fail closed on an
+unexpected `402`.
 
 `GetOrderProof` returns a server-issued payment record whose historical
 `Signature` field is not a signature or attestation. It is the Keccak256 digest
@@ -156,4 +169,3 @@ See:
 
 - [API Reference](../docs/goat-flow-api-reference.md)
 - [Developer Quick Start](../docs/goat-flow-developer-quickstart.md)
-- [Integration Guide](../docs/goat-flow-integration.md)

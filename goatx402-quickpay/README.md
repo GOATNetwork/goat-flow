@@ -51,13 +51,14 @@ npx goatflow-paykit inspect https://flow-quickpay.goat.network/paykit/acme/agent
 # agent transcripts leak it): set PAYKIT_PRIVATE_KEY in your environment out-of-band
 # (e.g. from a secret manager), or pass --wallet-file <path> (a chmod 600 key file).
 
-# pay a custom amount via x402
+# Set CHAIN_ID and TOKEN_CONTRACT from the merchant's inspect output.
+# Pay a custom amount via x402.
 npx goatflow-paykit pay-x402 https://flow-quickpay.goat.network/paykit/acme/agent.md \
-  --amount 12.50 --token-contract 0xToken --chain 4217
+  --amount 12.50 --token-contract "$TOKEN_CONTRACT" --chain "$CHAIN_ID" --idempotency-key invoice-123:buyer
 
 # buy a fixed-price product (the merchant prices it; you only pick the token + chain)
 npx goatflow-paykit pay-product https://flow-quickpay.goat.network/paykit/acme/agent.md \
-  --product mug --token-contract 0xToken --chain 4217
+  --product mug --token-contract "$TOKEN_CONTRACT" --chain "$CHAIN_ID" --idempotency-key cart-456:buyer
 
 # pay a fixed MPP route
 npx goatflow-paykit pay-mpp https://flow-quickpay.goat.network/paykit/acme/agent.md \
@@ -167,6 +168,11 @@ provides the current transfer terms.
 
 ## Retry safety (avoid double-paying)
 
+Save a distinct `--idempotency-key` for each new payment intent before the
+first call. If a request times out, reuse that key with the same merchant,
+payer, and payment terms so the CLI can recover the original session. Run the
+same command without `--force` to resume polling a reused session.
+
 QuickPay session terminal states are `PAYMENT_CONFIRMED`, `EXPIRED`, `FAILED`,
 and `CANCELLED`. This is separate from the Server SDK order model, where
 `INVOICED` is also a successful terminal state.
@@ -226,6 +232,6 @@ npm run test:run    # vitest
 npm run build       # emit dist/
 ```
 
-See the [QuickPay integration guide](../docs/goat-flow-integration.md#8-quickpay),
-[GOAT Flow MPP integration profile](../docs/mpp.md), and
+See the [QuickPay integration guide](../docs/goat-flow-api-reference.md#10-quickpay),
+[GOAT Flow MPP integration profile](../docs/advanced/mpp.md), and
 [Changelog](./CHANGELOG.md).

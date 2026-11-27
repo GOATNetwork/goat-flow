@@ -7,7 +7,7 @@ Before changing or publishing an npm package, read and follow
 release procedure; the rules below are mandatory guardrails, not a replacement
 for that runbook.
 
-- Release only from the canonical `GOATNetwork/x402` repository.
+- Release only from the canonical `GOATNetwork/goat-flow` repository (formerly `GOATNetwork/x402`).
 - Treat tag pushes, `npm publish`, `npm unpublish`, `npm deprecate`, and
   dist-tag changes as explicit release actions; do not infer authorization
   from a review, sync, or version bump alone.

@@ -27,7 +27,7 @@ from git is the root cause this process exists to prevent.
 
 ## GOAT Flow package identities
 
-The current published identities, verified on October 9, 2026, are
+The current published identities, verified on November 26, 2026, are
 `goatflow-sdk@0.3.0`, `goatflow-paykit@0.4.0` (the new package identity),
 `goatflow-sdk-server@0.4.0`, and `goatflow-checkout@0.2.0`. The predecessor
 `goatflow-quickpay@0.3.0` remains a separate historical package. Repository
@@ -46,9 +46,10 @@ Do not tag or publish a package while a blocker applicable to that package remai
 
 - Package-local workspaces explicitly include `.` and each managed package pins
   pnpm `10.28.0`; frozen installs must use that version without weakening policy.
-- Checkout declarations use the active hosted origin from `docs/README.md`.
+- Checkout declarations use the active hosted origin from the
+  [API Reference](docs/goat-flow-api-reference.md#1-origins-and-configuration).
 - **Per-release blocker:** the candidate must be the exact tip of canonical
-  `GOATNetwork/x402` `main`, validated from a clean checkout whose `origin`
+  `GOATNetwork/goat-flow` `main`, validated from a clean checkout whose `origin`
   points to that repository.
 - **Per-release blocker:** build one actual `.tgz` per package from that clean
   commit, record its identity, and publish that exact file. A dry run or a
@@ -75,16 +76,24 @@ contract build or deployment sign-off; see
 [`goatx402-contract/README.md`](goatx402-contract/README.md#prerequisites). It
 does not add the contract project to the npm release scope.
 
-## Publish repository — GOATNetwork/x402
+<a id="publish-repository--goatnetworkx402"></a>
 
-Releases are cut from the canonical `github.com/GOATNetwork/x402` repository
-(decided 2026-07-12). `repository.url` in all four packages points there and
-must stay that way. Development may happen on forks, but the release commit —
-and its tags — must land on the canonical repository's default branch before
-anything is published: never publish from a fork checkout, or the published
-metadata would reference tags the canonical repository does not contain. When
-the hardened publish workflow is restored (see follow-ups), it lives in the
-canonical repository and re-enables npm `--provenance` from there.
+## Publish repository — GOATNetwork/goat-flow
+
+Releases are cut from the canonical
+[`GOATNetwork/goat-flow`](https://github.com/GOATNetwork/goat-flow) repository.
+Its former `GOATNetwork/x402` URL redirects to this repository. The checked-in
+package manifests and the published versions listed above still use the former
+URL in `repository.url`; this documentation update does not change those
+manifests or rewrite published artifacts. Treat any package metadata update as
+part of a separately reviewed release, while keeping it tied to this same
+canonical repository and the correct package directory.
+
+Development may happen on forks, but the release commit and its tags must land
+on the canonical repository's default branch before publication. Never publish
+from a fork checkout. When the hardened publish workflow is restored (see
+follow-ups), it lives in the canonical repository and re-enables npm
+`--provenance` from there.
 
 ## Runbook
 
@@ -101,7 +110,9 @@ For every package being released:
   `Unreleased` section exists, rename that section, otherwise create the
   version heading above the existing history;
 - do not rewrite, reorder, or otherwise clean up historical release entries;
-- confirm `repository.url` still points to `GOATNetwork/x402`; and
+- confirm `repository.url` identifies `GOATNetwork/goat-flow` or its existing
+  `GOATNetwork/x402` redirect, with the correct package directory, and review
+  any metadata change as part of this release; and
 - merge all code, metadata, tests, and CHANGELOG changes into canonical `main`
   through the normal PR flow.
 
@@ -116,6 +127,7 @@ Use a fresh clone or detached worktree at the exact merge commit. For example:
 ```bash
 canonical_url="$(git remote get-url origin)"
 case "$canonical_url" in
+  https://github.com/GOATNetwork/goat-flow.git|git@github.com:GOATNetwork/goat-flow.git) ;;
   https://github.com/GOATNetwork/x402.git|git@github.com:GOATNetwork/x402.git) ;;
   *) echo "origin is not canonical: $canonical_url" >&2; exit 1 ;;
 esac
